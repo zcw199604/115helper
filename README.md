@@ -8,6 +8,7 @@
 - 文件后缀过滤
 - SQLite 持久化配置与运行记录
 - 前后端分离控制台
+- 不再内置任何前端 mock 数据，页面操作直接写入真实 SQLite
 
 ## 目录结构
 
@@ -69,8 +70,20 @@ docker build -t 115helper:latest .
 运行单容器：
 
 ```bash
-docker run -d   --name 115helper   -p 8000:8000   --env-file .env   -v $(pwd)/data:/app/data   115helper:latest
+docker run -d \
+  --name 115helper \
+  -p 8000:8000 \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  --restart unless-stopped \
+  115helper:latest
 ```
+
+说明：
+
+- 任务配置、运行记录、日志默认保存在 `/app/data/app.db`
+- 必须挂载 `-v $(pwd)/data:/app/data`，否则删除/重建容器后 SQLite 数据不会保留
+- 如果你使用自定义 `SQLITE_PATH`，请确保它也位于持久化挂载目录中
 
 启动后可直接访问：
 

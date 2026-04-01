@@ -11,19 +11,8 @@ export interface LogStreamClient {
   close: () => void
 }
 
-const useMock = import.meta.env.VITE_USE_MOCK !== 'false'
 
 export function subscribeRunLogStream(runId: number, handlers: LogStreamHandlers): LogStreamClient {
-  if (useMock) {
-    const timer = window.setInterval(() => {
-      handlers.onStatus?.('heartbeat')
-    }, 5000)
-    handlers.onOpen?.()
-    return {
-      close: () => window.clearInterval(timer),
-    }
-  }
-
   const eventSource = new EventSource(`/api/v1/runs/${runId}/logs/stream`)
   eventSource.addEventListener('open', () => {
     handlers.onOpen?.()
