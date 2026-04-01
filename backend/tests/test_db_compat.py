@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, inspect, text
 from app.db.compat import ensure_schema_compat
 
 
-def test_ensure_schema_compat_adds_skip_existing_remote(tmp_path) -> None:
+def test_ensure_schema_compat_adds_duplicate_columns(tmp_path) -> None:
     db_path = tmp_path / "compat.db"
     engine = create_engine(f"sqlite:///{db_path}")
     with engine.begin() as conn:
@@ -13,3 +13,4 @@ def test_ensure_schema_compat_adds_skip_existing_remote(tmp_path) -> None:
     ensure_schema_compat(engine)
     columns = {col['name'] for col in inspect(engine).get_columns('sync_sources')}
     assert 'skip_existing_remote' in columns
+    assert 'duplicate_check_mode' in columns

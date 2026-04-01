@@ -2,26 +2,25 @@
 
 from pathlib import Path
 
-from app.models.enums import FileAction, UploadMode
+from app.models.enums import DuplicateCheckMode, FileAction, UploadMode
 from app.services.sync_scanner import LocalFileCandidate, calc_sha1
 from app.services.upload_strategy import UploadStrategyService
 
 
 class FakeGateway:
-    def __init__(self, existing: dict | None = None) -> None:
-        self.existing = existing
+    def __init__(self, items: list[dict] | None = None) -> None:
+        self.items = items or []
         self.fast_called = False
         self.multipart_called = False
+        self.list_count = 0
 
     def ensure_remote_dir(self, _remote_dir):
         return 100
 
-    def find_existing_remote_file(self, *, pid: int, filename: str, filesize: int, filesha1: str):
+    def list_remote_dir_files(self, *, pid: int):
         assert pid == 100
-        assert filename
-        assert filesize >= 0
-        assert filesha1
-        return self.existing
+        self.list_count += 1
+        return list(self.items)
 
     def fast_upload_init(self, **_kwargs):
         self.fast_called = True
@@ -32,24 +31,52 @@ class FakeGateway:
         return {"data": {"file_id": "300", "pickcode": "pc300"}}
 
 
-def test_upload_candidate_skips_when_remote_exists(tmp_path: Path) -> None:
-    file_path = tmp_path / "demo.mkv"
-    file_path.write_bytes(b"hello world")
-    candidate = LocalFileCandidate(
+def make_candidate(tmp_path: Path, name: str = "demo.mkv", content: bytes = b"hello world") -> LocalFileCandidate:
+    file_path = tmp_path / name
+    file_path.write_bytes(content)
+    return LocalFileCandidate(
         absolute_path=file_path,
-        relative_path=Path("demo.mkv"),
-        suffix=".mkv",
+        relative_path=Path(name),
+        suffix=file_path.suffix.lower(),
         size=file_path.stat().st_size,
     )
-    gateway = FakeGateway(existing={"id": "901", "pickcode": "pc901"})
+
+
+def test_upload_candidate_skips_when_remote_name_exists(tmp_path: Path) -> None:
+    candidate = make_candidate(tmp_path)
+    gateway = FakeGateway(items=[{"id": "901", "pickcode": "pc901", "name": "demo.mkv", "sha1": ""}])
     service = UploadStrategyService(gateway)
 
-    result = service.upload_candidate(candidate, "/remote", UploadMode.FAST_THEN_MULTIPART, skip_existing_remote=True)
+    result = service.upload_candidate(candidate, "/remote", UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
 
     assert result.action == FileAction.SKIPPED
-    assert "防重复上传配置跳过" in result.message
+    assert "按文件名匹配命中" in result.message
     assert result.remote_file_id == "901"
-    assert result.remote_pickcode == "pc901"
-    assert result.file_sha1 == calc_sha1(file_path)
     assert gateway.fast_called is False
     assert gateway.multipart_called is False
+
+
+def test_upload_candidate_skips_when_remote_sha1_exists(tmp_path: Path) -> None:
+    candidate = make_candidate(tmp_path)
+    gateway = FakeGateway(items=[{"id": "902", "pickcode": "pc902", "name": "other.mkv", "sha1": calc_sha1(candidate.absolute_path)}])
+    service = UploadStrategyService(gateway)
+
+    result = service.upload_candidate(candidate, "/remote", UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.SHA1)
+
+    assert result.action == FileAction.SKIPPED
+    assert "按 SHA1匹配命中" in result.message
+    assert result.remote_file_id == "902"
+    assert gateway.fast_called is False
+
+
+def test_upload_candidate_caches_remote_dir_listing(tmp_path: Path) -> None:
+    candidate = make_candidate(tmp_path)
+    gateway = FakeGateway(items=[])
+    service = UploadStrategyService(gateway)
+
+    first = service.upload_candidate(candidate, "/remote", UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
+    second = service.upload_candidate(candidate, "/remote", UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
+
+    assert first.action == FileAction.FAST_UPLOADED
+    assert second.action == FileAction.FAST_UPLOADED
+    assert gateway.list_count == 1

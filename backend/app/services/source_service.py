@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.models.enums import DuplicateCheckMode
 from app.repositories.source_repository import SourceRepository
 from app.schemas.source import ScheduleState, SourceCreate, SourceRead, SourceUpdate
 from app.services.scheduler_service import scheduler_service
@@ -17,6 +18,15 @@ class SourceService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = SourceRepository(db)
+
+    @staticmethod
+    def _resolve_duplicate_check_mode(source) -> DuplicateCheckMode:
+        raw_value = getattr(source, "duplicate_check_mode", None)
+        if raw_value:
+            return DuplicateCheckMode(raw_value)
+        if bool(getattr(source, "skip_existing_remote", 0)):
+            return DuplicateCheckMode.SHA1
+        return DuplicateCheckMode.NONE
 
     def _to_read_model(self, source) -> SourceRead:
         snapshot = scheduler_service.get_snapshot(self.db, source.id)
@@ -30,7 +40,7 @@ class SourceService:
             exclude_rules=json.loads(source.exclude_rules_json or "[]"),
             cron_expr=source.cron_expr,
             enabled=bool(source.enabled),
-            skip_existing_remote=bool(getattr(source, "skip_existing_remote", 0)),
+            duplicate_check_mode=self._resolve_duplicate_check_mode(source),
             created_at=source.created_at,
             updated_at=source.updated_at,
             schedule_state=ScheduleState(

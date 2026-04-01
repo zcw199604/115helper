@@ -73,37 +73,23 @@ class P115Gateway:
             "sha1": item.get("sha") or item.get("sha1") or item.get("file_sha1") or "",
         }
 
-    def find_existing_remote_file(self, *, pid: int, filename: str, filesize: int, filesha1: str) -> dict | None:
+    def list_remote_dir_files(self, *, pid: int) -> list[dict]:
         offset = 0
         limit = 200
-        target_sha1 = filesha1.upper()
+        result: list[dict] = []
         while True:
             response = self.client.fs_files(
-                {"cid": pid, "limit": limit, "offset": offset, "show_dir": 0, "search_value": filename},
+                {"cid": pid, "limit": limit, "offset": offset, "show_dir": 0},
                 **self.request_kwargs(app=False),
             )
             items = response.get("data") or []
             if not isinstance(items, list):
                 break
-            for item in items:
-                normalized = self._normalize_remote_item(item)
-                if normalized["name"] != filename:
-                    continue
-                remote_sha1 = str(normalized["sha1"] or "").upper()
-                try:
-                    remote_size = int(normalized["size"] or 0)
-                except (TypeError, ValueError):
-                    remote_size = 0
-                if remote_sha1:
-                    if remote_sha1 == target_sha1:
-                        return normalized
-                    continue
-                if remote_size == filesize:
-                    return normalized
+            result.extend(self._normalize_remote_item(item) for item in items)
             if len(items) < limit:
                 break
             offset += limit
-        return None
+        return result
 
     def fast_upload_init(self, *, filename: str, filesize: int, filesha1: str, pid: int, read_range_hash: Callable[[str], str]) -> dict:
         return self.client.upload_file_init(

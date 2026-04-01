@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.enums import RunStatus, UploadMode
+from app.models.enums import DuplicateCheckMode, RunStatus, UploadMode
 
 
 class SourceBase(BaseModel):
@@ -18,7 +18,7 @@ class SourceBase(BaseModel):
     exclude_rules: list[str] = Field(default_factory=list)
     cron_expr: str | None = None
     enabled: bool = True
-    skip_existing_remote: bool = False
+    duplicate_check_mode: DuplicateCheckMode = DuplicateCheckMode.NONE
 
     @field_validator("suffix_rules", mode="before")
     @classmethod
@@ -74,7 +74,7 @@ class SourceUpdate(BaseModel):
     exclude_rules: list[str] | None = None
     cron_expr: str | None = None
     enabled: bool | None = None
-    skip_existing_remote: bool | None = None
+    duplicate_check_mode: DuplicateCheckMode | None = None
 
     model_config = ConfigDict(extra="forbid")
 

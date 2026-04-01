@@ -11,6 +11,14 @@ class UploadMode(str, Enum):
     MULTIPART_ONLY = "multipart_only"
 
 
+class DuplicateCheckMode(str, Enum):
+    """远端防重复匹配模式。"""
+
+    NONE = "none"
+    NAME = "name"
+    SHA1 = "sha1"
+
+
 class RunStatus(str, Enum):
     """任务运行状态。"""
 

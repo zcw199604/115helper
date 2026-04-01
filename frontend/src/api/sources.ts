@@ -18,7 +18,7 @@ function normalizePayload(input: SourceFormInput) {
       .filter(Boolean),
     cron_expr: input.cron_expr.trim(),
     enabled: input.enabled,
-    skip_existing_remote: input.skip_existing_remote,
+    duplicate_check_mode: input.duplicate_check_mode,
   }
 }
 

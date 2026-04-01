@@ -39,9 +39,13 @@
         <el-form-item label="Cron 表达式">
           <el-input v-model="form.cron_expr" placeholder="留空表示仅手动执行，例如：0 */6 * * *" />
         </el-form-item>
-        <el-form-item label="防重复上传">
-          <el-switch v-model="form.skip_existing_remote" />
-          <div class="form-tip">开启后，若 115 目标目录已存在同名同大小或同 SHA1 文件，将跳过上传并写入任务日志。</div>
+        <el-form-item label="远端防重">
+          <el-select v-model="form.duplicate_check_mode" style="width: 100%">
+            <el-option label="关闭" value="none" />
+            <el-option label="按文件名跳过" value="name" />
+            <el-option label="按 SHA1 跳过" value="sha1" />
+          </el-select>
+          <div class="form-tip">开启后会先按目录列出 115 目标目录中的文件，再根据所选模式判断是否跳过，并写入任务日志。</div>
         </el-form-item>
         <el-form-item label="启用任务">
           <el-switch v-model="form.enabled" />
@@ -79,7 +83,7 @@ const form = reactive<SourceFormInput>({
   exclude_rules_text: '',
   cron_expr: '',
   enabled: true,
-  skip_existing_remote: false,
+  duplicate_check_mode: 'none',
 })
 
 async function loadSource() {
@@ -100,7 +104,7 @@ async function loadSource() {
   form.exclude_rules_text = source.exclude_rules.join(',')
   form.cron_expr = source.cron_expr ?? ''
   form.enabled = source.enabled
-  form.skip_existing_remote = source.skip_existing_remote
+  form.duplicate_check_mode = source.duplicate_check_mode
 }
 
 async function handleSubmit() {

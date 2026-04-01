@@ -27,6 +27,7 @@ class SyncSource(Base):
     cron_expr: Mapped[str | None] = mapped_column(String(100), nullable=True)
     enabled: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     skip_existing_remote: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duplicate_check_mode: Mapped[str] = mapped_column(String(16), default="none", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 

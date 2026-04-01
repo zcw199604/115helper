@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from app.models.enums import RunStatus
+from app.models.enums import DuplicateCheckMode, RunStatus
 from app.schemas.source import ScheduleState
 from app.services.source_service import SourceService
 
@@ -32,6 +32,7 @@ def test_to_read_model_contains_schedule_state(monkeypatch) -> None:
         cron_expr='0 * * * *',
         enabled=1,
         skip_existing_remote=1,
+        duplicate_check_mode='name',
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -40,4 +41,4 @@ def test_to_read_model_contains_schedule_state(monkeypatch) -> None:
     result = service._to_read_model(source)
     assert result.schedule_state.is_scheduled is True
     assert result.schedule_state.last_run_status == RunStatus.SUCCESS
-    assert result.skip_existing_remote is True
+    assert result.duplicate_check_mode == DuplicateCheckMode.NAME

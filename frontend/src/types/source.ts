@@ -1,5 +1,6 @@
-export type UploadMode = 'fast_only' | 'fast_then_multipart' | 'multipart_only'
-export type RunStatus = 'pending' | 'running' | 'success' | 'partial_failed' | 'failed' | 'cancelled'
+export type UploadMode = "fast_only" | "fast_then_multipart" | "multipart_only"
+export type DuplicateCheckMode = "none" | "name" | "sha1"
+export type RunStatus = "pending" | "running" | "success" | "partial_failed" | "failed" | "cancelled"
 
 export interface TaskScheduleState {
   is_scheduled: boolean
@@ -18,7 +19,7 @@ export interface SyncSource {
   exclude_rules: string[]
   cron_expr?: string | null
   enabled: boolean
-  skip_existing_remote: boolean
+  duplicate_check_mode: DuplicateCheckMode
   updated_at: string
   schedule_state?: TaskScheduleState
 }
@@ -32,5 +33,5 @@ export interface SourceFormInput {
   exclude_rules_text: string
   cron_expr: string
   enabled: boolean
-  skip_existing_remote: boolean
+  duplicate_check_mode: DuplicateCheckMode
 }

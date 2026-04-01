@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.integrations.p115.client import P115Gateway
-from app.models.enums import FileAction, RunStatus, TriggerType, UploadMode
+from app.models.enums import DuplicateCheckMode, FileAction, RunStatus, TriggerType, UploadMode
 from app.models.file_record import FileRecord
 from app.models.run import JobRun
 from app.models.source import SyncSource
@@ -100,7 +100,9 @@ class RunService:
             exclude_rules = json.loads(source.exclude_rules_json or '[]')
             candidates = scan_local_files(Path(source.local_path), suffix_rules, exclude_rules)
             summary['total_files'] = len(candidates)
-            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='scan', message=f"扫描完成，候选文件 {len(candidates)} 个；后缀规则 {suffix_rules or ['全部']}；排除规则 {exclude_rules or ['无']}；防重复上传 {'开启' if bool(getattr(source, 'skip_existing_remote', 0)) else '关闭'}")
+            duplicate_check_mode = DuplicateCheckMode(getattr(source, 'duplicate_check_mode', None) or ('sha1' if bool(getattr(source, 'skip_existing_remote', 0)) else 'none'))
+            mode_text = {'none': '关闭', 'name': '按文件名', 'sha1': '按 SHA1'}[duplicate_check_mode.value]
+            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='scan', message=f"扫描完成，候选文件 {len(candidates)} 个；后缀规则 {suffix_rules or ['全部']}；排除规则 {exclude_rules or ['无']}；远端防重 {mode_text}")
             if self._stop_if_cancelled(run, source, 'scan', summary):
                 return run
 
@@ -110,7 +112,7 @@ class RunService:
                     return run
                 self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='file', message=f'开始处理文件: {candidate.relative_path.as_posix()} ({candidate.size} bytes)')
                 try:
-                    result = uploader.upload_candidate(candidate, source.remote_path, UploadMode(source.upload_mode), skip_existing_remote=bool(getattr(source, 'skip_existing_remote', 0)))
+                    result = uploader.upload_candidate(candidate, source.remote_path, UploadMode(source.upload_mode), duplicate_check_mode=duplicate_check_mode)
                     if result.action == FileAction.FAST_UPLOADED:
                         summary['fast_uploaded'] += 1
                     elif result.action == FileAction.MULTIPART_UPLOADED:
