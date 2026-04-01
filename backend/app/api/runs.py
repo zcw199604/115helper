@@ -70,7 +70,7 @@ async def stream_run_logs(run_id: int, request: Request, db: Session = Depends(g
                     chunk = await asyncio.wait_for(queue.get(), timeout=10)
                     yield chunk
                 except asyncio.TimeoutError:
-                    yield f"event: heartbeat\ndata: {{"run_id": {run_id}}}\n\n"
+                    yield f"event: heartbeat\ndata: {{\"run_id\": {run_id}}}\n\n"
         finally:
             await task_log_stream_service.unsubscribe(run_id, queue)
 
