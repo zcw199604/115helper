@@ -1,0 +1,24 @@
+[project]
+name = "helper115-backend"
+version = "0.1.0"
+description = "115 同步控制台后端"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+  "fastapi>=0.116.0",
+  "uvicorn[standard]>=0.35.0",
+  "sqlalchemy>=2.0.38",
+  "pydantic-settings>=2.10.0",
+  "apscheduler>=3.10.4",
+  "p115client==0.0.8.4.6",
+  "httpx[http2]>=0.28.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.4",
+  "pytest-asyncio>=0.25.3",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

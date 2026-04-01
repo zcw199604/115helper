@@ -1,0 +1,11 @@
+.git
+.gitignore
+frontend/node_modules
+frontend/dist
+frontend/.vite
+backend/.venv
+backend/__pycache__
+backend/.pytest_cache
+**/__pycache__
+**/*.pyc
+helloagents

@@ -1,0 +1,48 @@
+import type { TaskLogRecord } from '@/types/run'
+
+export interface LogStreamHandlers {
+  onLog?: (log: TaskLogRecord) => void
+  onStatus?: (status: string) => void
+  onOpen?: () => void
+  onError?: () => void
+}
+
+export interface LogStreamClient {
+  close: () => void
+}
+
+const useMock = import.meta.env.VITE_USE_MOCK !== 'false'
+
+export function subscribeRunLogStream(runId: number, handlers: LogStreamHandlers): LogStreamClient {
+  if (useMock) {
+    const timer = window.setInterval(() => {
+      handlers.onStatus?.('heartbeat')
+    }, 5000)
+    handlers.onOpen?.()
+    return {
+      close: () => window.clearInterval(timer),
+    }
+  }
+
+  const eventSource = new EventSource(`/api/v1/runs/${runId}/logs/stream`)
+  eventSource.addEventListener('open', () => {
+    handlers.onOpen?.()
+  })
+  eventSource.addEventListener('log', (event) => {
+    const data = JSON.parse((event as MessageEvent).data) as TaskLogRecord
+    handlers.onLog?.(data)
+  })
+  eventSource.addEventListener('status', (event) => {
+    const data = JSON.parse((event as MessageEvent).data) as { status: string }
+    handlers.onStatus?.(data.status)
+  })
+  eventSource.addEventListener('heartbeat', () => {
+    handlers.onStatus?.('heartbeat')
+  })
+  eventSource.onerror = () => {
+    handlers.onError?.()
+  }
+  return {
+    close: () => eventSource.close(),
+  }
+}
