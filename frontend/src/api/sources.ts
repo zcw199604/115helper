@@ -2,7 +2,7 @@ import { http } from './http'
 import { mockSources } from './mockData'
 import type { SourceFormInput, SyncSource } from '@/types/source'
 
-const useMock = import.meta.env.VITE_USE_MOCK !== 'false'
+const useMock = import.meta.env.VITE_USE_MOCK === 'true'
 
 function normalizePayload(input: SourceFormInput) {
   return {
