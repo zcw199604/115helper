@@ -21,20 +21,32 @@
           </el-select>
         </el-form-item>
         <el-form-item label="后缀白名单">
-          <el-input
-            v-model="form.suffix_rules_text"
-            type="textarea"
-            :rows="3"
-            placeholder="一行一个，或用英文逗号分隔，例如：.mp4,.mkv"
-          />
+          <el-select
+            v-model="form.suffix_rules"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            filterable
+            placeholder="请选择允许同步的文件后缀"
+            style="width: 100%"
+          >
+            <el-option v-for="item in suffixOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+          <div class="form-tip">支持多选，未选择时表示不过滤任何后缀。</div>
         </el-form-item>
         <el-form-item label="排除规则">
-          <el-input
-            v-model="form.exclude_rules_text"
-            type="textarea"
-            :rows="3"
-            placeholder="例如：sample,.part"
-          />
+          <el-select
+            v-model="form.exclude_rules"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            filterable
+            placeholder="请选择要排除的规则"
+            style="width: 100%"
+          >
+            <el-option v-for="item in excludeOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+          <div class="form-tip">支持多选，规则会按通配模式匹配相对路径。</div>
         </el-form-item>
         <el-form-item label="Cron 表达式">
           <el-input v-model="form.cron_expr" placeholder="留空表示仅手动执行，例如：0 */6 * * *" />
@@ -78,13 +90,16 @@ const router = useRouter()
 const sourceId = computed(() => Number(route.params.id || 0))
 const pageTitle = computed(() => (sourceId.value ? '编辑同步源' : '新增同步源'))
 
+const suffixOptions = ['.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.mov', '.wmv', '.flv', '.mpg', '.mpeg', '.iso', '.rmvb', '.srt', '.ass', '.ssa', '.sub']
+const excludeOptions = ['sample*', '*.part', '*.tmp', '*.aria2', '*.torrent', '@eaDir/*', '.DS_Store', 'Thumbs.db', 'System Volume Information/*', '$RECYCLE.BIN/*']
+
 const form = reactive<SourceFormInput>({
   name: '',
   local_path: '',
   remote_path: '',
   upload_mode: 'fast_then_multipart',
-  suffix_rules_text: '.mp4,.mkv',
-  exclude_rules_text: '',
+  suffix_rules: ['.mp4', '.mkv'],
+  exclude_rules: [],
   cron_expr: '',
   enabled: true,
   duplicate_check_mode: 'none',
@@ -105,8 +120,8 @@ async function loadSource() {
   form.local_path = source.local_path
   form.remote_path = source.remote_path
   form.upload_mode = source.upload_mode
-  form.suffix_rules_text = source.suffix_rules.join(',')
-  form.exclude_rules_text = source.exclude_rules.join(',')
+  form.suffix_rules = source.suffix_rules
+  form.exclude_rules = source.exclude_rules
   form.cron_expr = source.cron_expr ?? ''
   form.enabled = source.enabled
   form.duplicate_check_mode = source.duplicate_check_mode

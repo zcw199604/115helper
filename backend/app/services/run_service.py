@@ -111,44 +111,56 @@ class RunService:
                 return run
 
             uploader = UploadStrategyService(gateway, self.remote_cache_service)
+            grouped_candidates: dict[str, list] = {}
             for candidate in candidates:
-                if self._stop_if_cancelled(run, source, 'file', summary):
-                    return run
-                self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='file', message=f'开始处理文件: {candidate.relative_path.as_posix()} ({candidate.size} bytes)')
-                try:
-                    result = uploader.upload_candidate(
-                        candidate,
-                        source.remote_path,
-                        UploadMode(source.upload_mode),
-                        duplicate_check_mode=duplicate_check_mode,
-                        force_refresh_remote_cache=force_refresh_remote_cache,
-                        log=lambda message: self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-cache', message=message),
-                    )
-                    if result.action == FileAction.FAST_UPLOADED:
-                        summary['fast_uploaded'] += 1
-                    elif result.action == FileAction.MULTIPART_UPLOADED:
-                        summary['multipart_uploaded'] += 1
-                    elif result.action == FileAction.SKIPPED:
-                        summary['skipped'] += 1
-                    action = result.action.value
-                    message = result.message
-                    file_sha1 = result.file_sha1
-                    remote_file_id = result.remote_file_id
-                    remote_pickcode = result.remote_pickcode
-                    self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='upload', message=f'文件处理完成: {candidate.relative_path.as_posix()} -> {message}')
-                except Exception as exc:
-                    summary['failed'] += 1
-                    action = FileAction.FAILED.value
-                    message = gateway.humanize_error(exc)
-                    file_sha1 = None
-                    remote_file_id = None
-                    remote_pickcode = None
-                    self.log_service.log(run_id=run.id, source_id=source.id, level='ERROR', stage='upload', message=f'文件处理失败: {candidate.relative_path.as_posix()} -> {message}')
+                remote_dir_path = uploader.resolve_remote_dir_path(source.remote_path, candidate)
+                grouped_candidates.setdefault(remote_dir_path, []).append(candidate)
 
-                self.db.add(FileRecord(run_id=run.id, source_id=source.id, relative_path=candidate.relative_path.as_posix(), file_size=candidate.size, file_sha1=file_sha1, suffix=candidate.suffix, action=action, remote_file_id=remote_file_id, remote_pickcode=remote_pickcode, message=message))
-                self.db.commit()
-                if self._stop_if_cancelled(run, source, 'upload', summary):
+            for remote_dir_path, dir_candidates in grouped_candidates.items():
+                if self._stop_if_cancelled(run, source, 'dir', summary):
                     return run
+                self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-dir', message=f'开始处理远端目录批次: {remote_dir_path}，文件数 {len(dir_candidates)}')
+                context = uploader.prepare_dir_context(
+                    remote_dir_path=remote_dir_path,
+                    force_refresh_remote_cache=force_refresh_remote_cache,
+                    log=lambda message: self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-cache', message=message),
+                )
+                for candidate in dir_candidates:
+                    if self._stop_if_cancelled(run, source, 'file', summary):
+                        return run
+                    self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='file', message=f'开始处理文件: {candidate.relative_path.as_posix()} ({candidate.size} bytes)')
+                    try:
+                        result = uploader.upload_candidate_in_context(
+                            candidate,
+                            context,
+                            UploadMode(source.upload_mode),
+                            duplicate_check_mode=duplicate_check_mode,
+                        )
+                        if result.action == FileAction.FAST_UPLOADED:
+                            summary['fast_uploaded'] += 1
+                        elif result.action == FileAction.MULTIPART_UPLOADED:
+                            summary['multipart_uploaded'] += 1
+                        elif result.action == FileAction.SKIPPED:
+                            summary['skipped'] += 1
+                        action = result.action.value
+                        message = result.message
+                        file_sha1 = result.file_sha1
+                        remote_file_id = result.remote_file_id
+                        remote_pickcode = result.remote_pickcode
+                        self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='upload', message=f'文件处理完成: {candidate.relative_path.as_posix()} -> {message}')
+                    except Exception as exc:
+                        summary['failed'] += 1
+                        action = FileAction.FAILED.value
+                        message = gateway.humanize_error(exc)
+                        file_sha1 = None
+                        remote_file_id = None
+                        remote_pickcode = None
+                        self.log_service.log(run_id=run.id, source_id=source.id, level='ERROR', stage='upload', message=f'文件处理失败: {candidate.relative_path.as_posix()} -> {message}')
+
+                    self.db.add(FileRecord(run_id=run.id, source_id=source.id, relative_path=candidate.relative_path.as_posix(), file_size=candidate.size, file_sha1=file_sha1, suffix=candidate.suffix, action=action, remote_file_id=remote_file_id, remote_pickcode=remote_pickcode, message=message))
+                    self.db.commit()
+                    if self._stop_if_cancelled(run, source, 'upload', summary):
+                        return run
 
             run.summary_json = json.dumps(summary, ensure_ascii=False)
             run.finished_at = datetime.now(timezone.utc)

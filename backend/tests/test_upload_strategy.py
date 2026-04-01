@@ -13,8 +13,10 @@ class FakeGateway:
         self.fast_called = False
         self.multipart_called = False
         self.list_count = 0
+        self.ensure_count = 0
 
     def ensure_remote_dir(self, _remote_dir):
+        self.ensure_count += 1
         return 100
 
     def list_remote_dir_files(self, *, pid: int):
@@ -66,8 +68,9 @@ def test_upload_candidate_skips_when_remote_name_exists_from_cache(tmp_path: Pat
     gateway = FakeGateway(items=[])
     cache = FakeRemoteCacheService(exists=True, items=[{'id': '901', 'pickcode': 'pc901', 'name': 'demo.mkv', 'sha1': ''}])
     service = UploadStrategyService(gateway, cache)
+    context = service.prepare_dir_context(remote_dir_path='/remote', force_refresh_remote_cache=False)
 
-    result = service.upload_candidate(candidate, '/remote', UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
+    result = service.upload_candidate_in_context(candidate, context, UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
 
     assert result.action == FileAction.SKIPPED
     assert '按文件名匹配命中' in result.message
@@ -82,8 +85,9 @@ def test_upload_candidate_skips_when_remote_sha1_exists(tmp_path: Path) -> None:
     gateway = FakeGateway(items=[{'id': '902', 'pickcode': 'pc902', 'name': 'other.mkv', 'sha1': calc_sha1(candidate.absolute_path)}])
     cache = FakeRemoteCacheService(exists=False)
     service = UploadStrategyService(gateway, cache)
+    context = service.prepare_dir_context(remote_dir_path='/remote', force_refresh_remote_cache=False)
 
-    result = service.upload_candidate(candidate, '/remote', UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.SHA1)
+    result = service.upload_candidate_in_context(candidate, context, UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.SHA1)
 
     assert result.action == FileAction.SKIPPED
     assert '按 SHA1匹配命中' in result.message
@@ -92,28 +96,41 @@ def test_upload_candidate_skips_when_remote_sha1_exists(tmp_path: Path) -> None:
     assert cache.replaced
 
 
-def test_upload_candidate_caches_remote_dir_listing(tmp_path: Path) -> None:
-    candidate = make_candidate(tmp_path)
+def test_prepare_context_caches_remote_dir_listing(tmp_path: Path) -> None:
     gateway = FakeGateway(items=[])
     cache = FakeRemoteCacheService(exists=False)
     service = UploadStrategyService(gateway, cache)
 
-    first = service.upload_candidate(candidate, '/remote', UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
-    second = service.upload_candidate(candidate, '/remote', UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
+    first = service.prepare_dir_context(remote_dir_path='/remote', force_refresh_remote_cache=False)
+    second = service.prepare_dir_context(remote_dir_path='/remote', force_refresh_remote_cache=False)
 
-    assert first.action == FileAction.FAST_UPLOADED
-    assert second.action == FileAction.SKIPPED
+    assert first.remote_dir_id == 100
+    assert second.remote_dir_id == 100
     assert gateway.list_count == 1
-    assert cache.upserts
+    assert gateway.ensure_count == 1
 
 
 def test_force_refresh_remote_cache_ignores_local_cache(tmp_path: Path) -> None:
-    candidate = make_candidate(tmp_path)
     gateway = FakeGateway(items=[])
     cache = FakeRemoteCacheService(exists=True, items=[{'id': '1', 'pickcode': 'pc1', 'name': 'demo.mkv', 'sha1': ''}])
     service = UploadStrategyService(gateway, cache)
 
-    result = service.upload_candidate(candidate, '/remote', UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME, force_refresh_remote_cache=True)
+    context = service.prepare_dir_context(remote_dir_path='/remote', force_refresh_remote_cache=True)
 
-    assert result.action == FileAction.FAST_UPLOADED
+    assert context.remote_dir_id == 100
     assert gateway.list_count == 1
+
+
+def test_name_mode_skip_does_not_calculate_sha1(tmp_path: Path, monkeypatch) -> None:
+    candidate = make_candidate(tmp_path)
+    gateway = FakeGateway(items=[])
+    cache = FakeRemoteCacheService(exists=True, items=[{'id': '901', 'pickcode': 'pc901', 'name': 'demo.mkv', 'sha1': ''}])
+    service = UploadStrategyService(gateway, cache)
+    context = service.prepare_dir_context(remote_dir_path='/remote', force_refresh_remote_cache=False)
+
+    def fail_calc(_path):
+        raise AssertionError('name 模式命中时不应计算 SHA1')
+
+    monkeypatch.setattr('app.services.upload_strategy.calc_sha1', fail_calc)
+    result = service.upload_candidate_in_context(candidate, context, UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
+    assert result.action == FileAction.SKIPPED

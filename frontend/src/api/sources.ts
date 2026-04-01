@@ -1,21 +1,14 @@
 import { http } from './http'
 import type { SourceFormInput, SyncSource } from '@/types/source'
 
-
 function normalizePayload(input: SourceFormInput) {
   return {
     name: input.name,
     local_path: input.local_path,
     remote_path: input.remote_path,
     upload_mode: input.upload_mode,
-    suffix_rules: input.suffix_rules_text
-      .split(/[\n,]/)
-      .map((item) => item.trim())
-      .filter(Boolean),
-    exclude_rules: input.exclude_rules_text
-      .split(/[\n,]/)
-      .map((item) => item.trim())
-      .filter(Boolean),
+    suffix_rules: input.suffix_rules,
+    exclude_rules: input.exclude_rules,
     cron_expr: input.cron_expr.trim(),
     enabled: input.enabled,
     duplicate_check_mode: input.duplicate_check_mode,

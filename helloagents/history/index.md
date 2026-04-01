@@ -14,6 +14,7 @@
 | 202603311642 | async_manual_runs | 功能 | ✅已完成 | [链接](2026-04/202603311642_async_manual_runs/) |
 | 202604010202 | interruptible_runs | 功能 | ✅已完成 | [链接](2026-04/202604010202_interruptible_runs/) |
 | 202604010937 | remote_cache_storage | 功能 | ✅已完成 | [链接](2026-04/202604010937_remote_cache_storage/) |
+| 202604011450 | directory_batch_cache | 功能 | ✅已完成 | [链接](2026-04/202604011450_directory_batch_cache/) |
 
 ---
 
@@ -28,3 +29,4 @@
 - [202603311642_async_manual_runs](2026-04/202603311642_async_manual_runs/) - 改造手动执行与重试为后台异步任务
 - [202604010202_interruptible_runs](2026-04/202604010202_interruptible_runs/) - 增强检查点中断式取消能力
 - [202604010937_remote_cache_storage](2026-04/202604010937_remote_cache_storage/) - 增强数据库独立挂载、远端目录缓存与任务级强制刷新能力
+- [202604011450_directory_batch_cache](2026-04/202604011450_directory_batch_cache/) - 优化按目录批处理远端缓存与按文件名模式性能

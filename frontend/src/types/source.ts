@@ -30,8 +30,8 @@ export interface SourceFormInput {
   local_path: string
   remote_path: string
   upload_mode: UploadMode
-  suffix_rules_text: string
-  exclude_rules_text: string
+  suffix_rules: string[]
+  exclude_rules: string[]
   cron_expr: string
   enabled: boolean
   duplicate_check_mode: DuplicateCheckMode
