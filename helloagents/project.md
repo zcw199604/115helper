@@ -13,7 +13,7 @@
 ## 开发约定
 - **代码规范:** 后端使用 Ruff + Black，前端使用 ESLint + Prettier。
 - **命名约定:** Python 使用 snake_case；前端组件使用 PascalCase；数据库表名使用 snake_case 复数。
-- **目录约定:** `backend/` 存放 API 与任务调度，`frontend/` 存放控制台界面，`data/` 存放 SQLite 与运行时文件。
+- **目录约定:** `backend/` 存放 API 与任务调度，`frontend/` 存放控制台界面，`db/` 存放 SQLite 数据库，`data/` 存放其它运行时文件。
 - **容器化:** 根目录 `Dockerfile` 提供单容器构建，运行时由 FastAPI 托管前端静态资源。
 - **CI/CD:** 使用 GitHub Actions 在 `main` 分支推送及手动触发时自动构建并推送 Docker Hub 镜像。
 

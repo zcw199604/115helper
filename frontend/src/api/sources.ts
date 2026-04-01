@@ -19,6 +19,7 @@ function normalizePayload(input: SourceFormInput) {
     cron_expr: input.cron_expr.trim(),
     enabled: input.enabled,
     duplicate_check_mode: input.duplicate_check_mode,
+    force_refresh_remote_cache: input.force_refresh_remote_cache,
   }
 }
 

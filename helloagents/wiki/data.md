@@ -98,3 +98,8 @@
 | key | text | 主键 | 配置键 |
 | value | text | 非空 | 配置值 |
 | updated_at | datetime | 非空 | 更新时间 |
+
+
+## 近期补充
+- 新增 `remote_dir_caches` / `remote_dir_entries` 用于持久化 115 远端目录文件缓存。
+- `sync_sources` 新增 `force_refresh_remote_cache` 字段。

@@ -16,7 +16,7 @@ flowchart TD
 - **后端:** Python 3.12 / FastAPI / SQLAlchemy / APScheduler / Pydantic
 - **前端:** Vue 3 / Vite / TypeScript / Element Plus / Pinia
 - **部署:** 支持开发态前后端分离，也支持单容器镜像由 FastAPI 统一对外提供 API + 前端页面
-- **数据:** SQLite
+- **数据:** SQLite（数据库文件与运行时数据目录分离，默认 `/app/db/app.db`）
 
 ## 核心流程
 ```mermaid

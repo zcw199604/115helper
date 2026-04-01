@@ -28,3 +28,9 @@
 
 #### [GET] /api/v1/runs/{run_id}/logs/stream
 **描述:** 通过 SSE 实时订阅某次运行的新增日志。
+
+
+## 近期补充
+- 同步任务新增 `duplicate_check_mode` 与 `force_refresh_remote_cache` 配置。
+- 数据库默认路径调整为 `/app/db/app.db`，支持单独挂载。
+- 新增远端目录文件 SQLite 缓存，供任务执行时复用。

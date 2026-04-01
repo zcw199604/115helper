@@ -17,8 +17,10 @@
 - 新增检查点中断式取消能力。
 - 新增单容器 Dockerfile，可在一个容器中同时托管后端 API 与前端静态资源。
 - 移除开发态 docker-compose.yml，新增 GitHub Actions 自动构建并推送 Docker Hub 工作流。
+- 新增数据库独立目录配置、远端目录文件 SQLite 缓存与任务级强制刷新远端目录配置。
 - 新增基于 SSE 的前端实时滚动日志能力。
 - 新增手动执行/重试的后台异步运行能力。
 - 新增检查点中断式取消能力。
 - 新增单容器 Dockerfile，可在一个容器中同时托管后端 API 与前端静态资源。
 - 移除开发态 docker-compose.yml，新增 GitHub Actions 自动构建并推送 Docker Hub 工作流。
+- 新增数据库独立目录配置、远端目录文件 SQLite 缓存与任务级强制刷新远端目录配置。

@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_prefix: str = "/api/v1"
     data_dir: Path = Field(default=Path("data"))
-    sqlite_path: Path = Field(default=Path("data/app.db"))
+    db_dir: Path = Field(default=Path("db"))
+    sqlite_path: Path = Field(default=Path("db/app.db"))
     log_level: str = "INFO"
     p115_cookies: str = ""
     p115_cookies_file: Path | None = None
@@ -36,5 +37,6 @@ def get_settings() -> Settings:
 
     settings = Settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.db_dir.mkdir(parents=True, exist_ok=True)
     settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
     return settings

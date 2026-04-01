@@ -16,6 +16,7 @@ from app.models.run import JobRun
 from app.models.source import SyncSource
 from app.schemas.run import FileRecordRead, RunDetail, RunRead
 from app.services.async_run_executor import async_run_executor
+from app.services.remote_dir_cache_service import RemoteDirCacheService
 from app.services.scheduler_service import scheduler_service
 from app.services.sync_scanner import scan_local_files
 from app.services.task_log_service import TaskLogService
@@ -28,6 +29,7 @@ class RunService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.log_service = TaskLogService(db)
+        self.remote_cache_service = RemoteDirCacheService(db)
 
     def ensure_run_exists(self, run_id: int) -> JobRun:
         run = self.db.get(JobRun, run_id)
@@ -102,17 +104,26 @@ class RunService:
             summary['total_files'] = len(candidates)
             duplicate_check_mode = DuplicateCheckMode(getattr(source, 'duplicate_check_mode', None) or ('sha1' if bool(getattr(source, 'skip_existing_remote', 0)) else 'none'))
             mode_text = {'none': '关闭', 'name': '按文件名', 'sha1': '按 SHA1'}[duplicate_check_mode.value]
-            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='scan', message=f"扫描完成，候选文件 {len(candidates)} 个；后缀规则 {suffix_rules or ['全部']}；排除规则 {exclude_rules or ['无']}；远端防重 {mode_text}")
+            force_refresh_remote_cache = bool(getattr(source, 'force_refresh_remote_cache', 0))
+            refresh_text = '强制同步远端目录文件' if force_refresh_remote_cache else '优先使用本地远端目录缓存'
+            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='scan', message=f"扫描完成，候选文件 {len(candidates)} 个；后缀规则 {suffix_rules or ['全部']}；排除规则 {exclude_rules or ['无']}；远端防重 {mode_text}；目录缓存策略 {refresh_text}")
             if self._stop_if_cancelled(run, source, 'scan', summary):
                 return run
 
-            uploader = UploadStrategyService(gateway)
+            uploader = UploadStrategyService(gateway, self.remote_cache_service)
             for candidate in candidates:
                 if self._stop_if_cancelled(run, source, 'file', summary):
                     return run
                 self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='file', message=f'开始处理文件: {candidate.relative_path.as_posix()} ({candidate.size} bytes)')
                 try:
-                    result = uploader.upload_candidate(candidate, source.remote_path, UploadMode(source.upload_mode), duplicate_check_mode=duplicate_check_mode)
+                    result = uploader.upload_candidate(
+                        candidate,
+                        source.remote_path,
+                        UploadMode(source.upload_mode),
+                        duplicate_check_mode=duplicate_check_mode,
+                        force_refresh_remote_cache=force_refresh_remote_cache,
+                        log=lambda message: self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-cache', message=message),
+                    )
                     if result.action == FileAction.FAST_UPLOADED:
                         summary['fast_uploaded'] += 1
                     elif result.action == FileAction.MULTIPART_UPLOADED:

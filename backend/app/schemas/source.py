@@ -19,6 +19,7 @@ class SourceBase(BaseModel):
     cron_expr: str | None = None
     enabled: bool = True
     duplicate_check_mode: DuplicateCheckMode = DuplicateCheckMode.NONE
+    force_refresh_remote_cache: bool = False
 
     @field_validator("suffix_rules", mode="before")
     @classmethod
@@ -75,6 +76,7 @@ class SourceUpdate(BaseModel):
     cron_expr: str | None = None
     enabled: bool | None = None
     duplicate_check_mode: DuplicateCheckMode | None = None
+    force_refresh_remote_cache: bool | None = None
 
     model_config = ConfigDict(extra="forbid")
 

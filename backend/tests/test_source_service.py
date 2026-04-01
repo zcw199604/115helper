@@ -33,6 +33,7 @@ def test_to_read_model_contains_schedule_state(monkeypatch) -> None:
         enabled=1,
         skip_existing_remote=1,
         duplicate_check_mode='name',
+        force_refresh_remote_cache=1,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -42,3 +43,4 @@ def test_to_read_model_contains_schedule_state(monkeypatch) -> None:
     assert result.schedule_state.is_scheduled is True
     assert result.schedule_state.last_run_status == RunStatus.SUCCESS
     assert result.duplicate_check_mode == DuplicateCheckMode.NAME
+    assert result.force_refresh_remote_cache is True

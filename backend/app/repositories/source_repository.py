@@ -31,8 +31,9 @@ class SourceRepository:
             exclude_rules_json=json.dumps(payload.exclude_rules, ensure_ascii=False),
             cron_expr=payload.cron_expr,
             enabled=1 if payload.enabled else 0,
-            skip_existing_remote=1 if payload.duplicate_check_mode.value != "none" else 0,
+            skip_existing_remote=1 if payload.duplicate_check_mode.value != 'none' else 0,
             duplicate_check_mode=payload.duplicate_check_mode.value,
+            force_refresh_remote_cache=1 if payload.force_refresh_remote_cache else 0,
         )
         self.db.add(source)
         self.db.commit()
@@ -50,9 +51,11 @@ class SourceRepository:
                 source.exclude_rules_json = json.dumps(value, ensure_ascii=False)
             elif key == "enabled" and value is not None:
                 source.enabled = 1 if value else 0
-            elif key == "duplicate_check_mode" and value is not None:
+            elif key == 'duplicate_check_mode' and value is not None:
                 source.duplicate_check_mode = value.value
-                source.skip_existing_remote = 1 if value.value != "none" else 0
+                source.skip_existing_remote = 1 if value.value != 'none' else 0
+            elif key == 'force_refresh_remote_cache' and value is not None:
+                source.force_refresh_remote_cache = 1 if value else 0
             else:
                 setattr(source, key, value)
         self.db.add(source)

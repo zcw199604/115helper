@@ -12,6 +12,8 @@
 | 202603301147 | multi_task_scheduler_logs | 功能 | ✅已完成 | [链接](2026-03/202603301147_multi_task_scheduler_logs/) |
 | 202603301613 | realtime_task_logs | 功能 | ✅已完成 | [链接](2026-03/202603301613_realtime_task_logs/) |
 | 202603311642 | async_manual_runs | 功能 | ✅已完成 | [链接](2026-04/202603311642_async_manual_runs/) |
+| 202604010202 | interruptible_runs | 功能 | ✅已完成 | [链接](2026-04/202604010202_interruptible_runs/) |
+| 202604010937 | remote_cache_storage | 功能 | ✅已完成 | [链接](2026-04/202604010937_remote_cache_storage/) |
 
 ---
 
@@ -24,5 +26,5 @@
 
 ### 2026-04
 - [202603311642_async_manual_runs](2026-04/202603311642_async_manual_runs/) - 改造手动执行与重试为后台异步任务
-| 202604010202 | interruptible_runs | 功能 | ✅已完成 | [链接](2026-04/202604010202_interruptible_runs/) |
 - [202604010202_interruptible_runs](2026-04/202604010202_interruptible_runs/) - 增强检查点中断式取消能力
+- [202604010937_remote_cache_storage](2026-04/202604010937_remote_cache_storage/) - 增强数据库独立挂载、远端目录缓存与任务级强制刷新能力

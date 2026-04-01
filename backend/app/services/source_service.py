@@ -21,10 +21,10 @@ class SourceService:
 
     @staticmethod
     def _resolve_duplicate_check_mode(source) -> DuplicateCheckMode:
-        raw_value = getattr(source, "duplicate_check_mode", None)
+        raw_value = getattr(source, 'duplicate_check_mode', None)
         if raw_value:
             return DuplicateCheckMode(raw_value)
-        if bool(getattr(source, "skip_existing_remote", 0)):
+        if bool(getattr(source, 'skip_existing_remote', 0)):
             return DuplicateCheckMode.SHA1
         return DuplicateCheckMode.NONE
 
@@ -36,11 +36,12 @@ class SourceService:
             local_path=source.local_path,
             remote_path=source.remote_path,
             upload_mode=source.upload_mode,
-            suffix_rules=json.loads(source.suffix_rules_json or "[]"),
-            exclude_rules=json.loads(source.exclude_rules_json or "[]"),
+            suffix_rules=json.loads(source.suffix_rules_json or '[]'),
+            exclude_rules=json.loads(source.exclude_rules_json or '[]'),
             cron_expr=source.cron_expr,
             enabled=bool(source.enabled),
             duplicate_check_mode=self._resolve_duplicate_check_mode(source),
+            force_refresh_remote_cache=bool(getattr(source, 'force_refresh_remote_cache', 0)),
             created_at=source.created_at,
             updated_at=source.updated_at,
             schedule_state=ScheduleState(
@@ -60,12 +61,12 @@ class SourceService:
     def get_source_or_404(self, source_id: int):
         source = self.repo.get(source_id)
         if source is None:
-            raise HTTPException(status_code=404, detail="同步任务不存在")
+            raise HTTPException(status_code=404, detail='同步任务不存在')
         return source
 
     def create_source(self, payload: SourceCreate) -> SourceRead:
         if not Path(payload.local_path).exists():
-            raise HTTPException(status_code=400, detail="本地目录不存在")
+            raise HTTPException(status_code=400, detail='本地目录不存在')
         source = self.repo.create(payload)
         self._refresh_scheduler()
         return self._to_read_model(source)
@@ -73,7 +74,7 @@ class SourceService:
     def update_source(self, source_id: int, payload: SourceUpdate) -> SourceRead:
         source = self.get_source_or_404(source_id)
         if payload.local_path and not Path(payload.local_path).exists():
-            raise HTTPException(status_code=400, detail="本地目录不存在")
+            raise HTTPException(status_code=400, detail='本地目录不存在')
         source = self.repo.update(source, payload)
         self._refresh_scheduler()
         return self._to_read_model(source)

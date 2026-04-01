@@ -7,6 +7,7 @@
 - 仅秒传 / 秒传失败回退分片 / 仅分片上传
 - 文件后缀过滤
 - 远端防重模式（按目录列出目标文件后，可按文件名或 SHA1 跳过，并记录到任务日志）
+- 远端目录文件缓存持久化到 SQLite，可按任务配置决定是否强制刷新 115 目录
 - SQLite 持久化配置与运行记录
 - 前后端分离控制台
 - 不再内置任何前端 mock 数据，页面操作直接写入真实 SQLite
@@ -31,7 +32,7 @@ cp .env.example .env
 至少配置：
 
 - `P115_COOKIES` 或 `P115_COOKIES_FILE`
-- `SQLITE_PATH`
+- `SQLITE_PATH`（推荐 `/app/db/app.db`）
 
 ### 2. 安装后端依赖并启动
 
@@ -75,6 +76,7 @@ docker run -d \
   --name 115helper \
   -p 8000:8000 \
   --env-file .env \
+  -v $(pwd)/db:/app/db \
   -v $(pwd)/data:/app/data \
   --restart unless-stopped \
   115helper:latest
@@ -82,9 +84,10 @@ docker run -d \
 
 说明：
 
-- 任务配置、运行记录、日志默认保存在 `/app/data/app.db`
-- 必须挂载 `-v $(pwd)/data:/app/data`，否则删除/重建容器后 SQLite 数据不会保留
-- 如果你使用自定义 `SQLITE_PATH`，请确保它也位于持久化挂载目录中
+- SQLite 默认保存在 `/app/db/app.db`，建议单独挂载 `-v $(pwd)/db:/app/db`
+- 其它运行时数据保存在 `/app/data`，建议同时挂载 `-v $(pwd)/data:/app/data`
+- 远端目录文件缓存也会写入同一个 SQLite，容器重建后仍可复用
+- 如果任务开启“强制同步远端目录文件”，执行时会重新调用 115 刷新目标目录缓存
 
 启动后可直接访问：
 

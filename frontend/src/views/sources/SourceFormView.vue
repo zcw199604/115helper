@@ -45,7 +45,11 @@
             <el-option label="按文件名跳过" value="name" />
             <el-option label="按 SHA1 跳过" value="sha1" />
           </el-select>
-          <div class="form-tip">开启后会先按目录列出 115 目标目录中的文件，再根据所选模式判断是否跳过，并写入任务日志。</div>
+          <div class="form-tip">开启后会优先读取本地 SQLite 中的远端目录缓存，再按所选模式判断是否跳过。</div>
+        </el-form-item>
+        <el-form-item label="强制同步远端目录文件">
+          <el-switch v-model="form.force_refresh_remote_cache" />
+          <div class="form-tip">开启后，每次执行任务都会强制调用 115 接口刷新目标目录缓存；关闭时优先复用本地 SQLite 缓存。</div>
         </el-form-item>
         <el-form-item label="启用任务">
           <el-switch v-model="form.enabled" />
@@ -84,6 +88,7 @@ const form = reactive<SourceFormInput>({
   cron_expr: '',
   enabled: true,
   duplicate_check_mode: 'none',
+  force_refresh_remote_cache: false,
 })
 
 async function loadSource() {
@@ -105,6 +110,7 @@ async function loadSource() {
   form.cron_expr = source.cron_expr ?? ''
   form.enabled = source.enabled
   form.duplicate_check_mode = source.duplicate_check_mode
+  form.force_refresh_remote_cache = source.force_refresh_remote_cache
 }
 
 async function handleSubmit() {
