@@ -30,6 +30,7 @@ class SourceService:
             exclude_rules=json.loads(source.exclude_rules_json or "[]"),
             cron_expr=source.cron_expr,
             enabled=bool(source.enabled),
+            skip_existing_remote=bool(getattr(source, "skip_existing_remote", 0)),
             created_at=source.created_at,
             updated_at=source.updated_at,
             schedule_state=ScheduleState(

@@ -100,7 +100,7 @@ class RunService:
             exclude_rules = json.loads(source.exclude_rules_json or '[]')
             candidates = scan_local_files(Path(source.local_path), suffix_rules, exclude_rules)
             summary['total_files'] = len(candidates)
-            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='scan', message=f"扫描完成，候选文件 {len(candidates)} 个；后缀规则 {suffix_rules or ['全部']}；排除规则 {exclude_rules or ['无']}")
+            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='scan', message=f"扫描完成，候选文件 {len(candidates)} 个；后缀规则 {suffix_rules or ['全部']}；排除规则 {exclude_rules or ['无']}；防重复上传 {'开启' if bool(getattr(source, 'skip_existing_remote', 0)) else '关闭'}")
             if self._stop_if_cancelled(run, source, 'scan', summary):
                 return run
 
@@ -110,7 +110,7 @@ class RunService:
                     return run
                 self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='file', message=f'开始处理文件: {candidate.relative_path.as_posix()} ({candidate.size} bytes)')
                 try:
-                    result = uploader.upload_candidate(candidate, source.remote_path, UploadMode(source.upload_mode))
+                    result = uploader.upload_candidate(candidate, source.remote_path, UploadMode(source.upload_mode), skip_existing_remote=bool(getattr(source, 'skip_existing_remote', 0)))
                     if result.action == FileAction.FAST_UPLOADED:
                         summary['fast_uploaded'] += 1
                     elif result.action == FileAction.MULTIPART_UPLOADED:

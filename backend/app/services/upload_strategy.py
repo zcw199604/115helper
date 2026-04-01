@@ -26,12 +26,35 @@ class UploadStrategyService:
         self.gateway = gateway
         self.default_part_size_mb = default_part_size_mb
 
-    def upload_candidate(self, candidate: LocalFileCandidate, remote_root: str, upload_mode: UploadMode) -> UploadResult:
+    def upload_candidate(
+        self,
+        candidate: LocalFileCandidate,
+        remote_root: str,
+        upload_mode: UploadMode,
+        *,
+        skip_existing_remote: bool = False,
+    ) -> UploadResult:
         remote_root_path = PurePosixPath(remote_root)
         remote_dir = remote_root_path.joinpath(*candidate.relative_path.parts[:-1]) if candidate.relative_path.parts[:-1] else remote_root_path
         pid = self.gateway.ensure_remote_dir(remote_dir)
         file_sha1 = calc_sha1(candidate.absolute_path)
         range_reader = build_range_hash_reader(candidate.absolute_path)
+
+        if skip_existing_remote:
+            existing = self.gateway.find_existing_remote_file(
+                pid=pid,
+                filename=candidate.absolute_path.name,
+                filesize=candidate.size,
+                filesha1=file_sha1,
+            )
+            if existing is not None:
+                return UploadResult(
+                    action=FileAction.SKIPPED,
+                    message=f"远端已存在同名文件，按防重复上传配置跳过 (id={existing.get('id')}, pickcode={existing.get('pickcode')})",
+                    file_sha1=file_sha1,
+                    remote_file_id=str(existing.get('id') or '') or None,
+                    remote_pickcode=existing.get('pickcode'),
+                )
 
         if upload_mode != UploadMode.MULTIPART_ONLY:
             init_resp = self.gateway.fast_upload_init(

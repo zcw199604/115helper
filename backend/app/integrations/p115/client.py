@@ -63,6 +63,48 @@ class P115Gateway:
         response = self.client.fs_makedirs_app(path_str, pid=0, **self.request_kwargs())
         return int(response["cid"])
 
+    @staticmethod
+    def _normalize_remote_item(item: dict) -> dict:
+        return {
+            "id": item.get("fid") or item.get("file_id") or item.get("id"),
+            "pickcode": item.get("pc") or item.get("pick_code") or item.get("pickcode"),
+            "name": item.get("n") or item.get("fn") or item.get("file_name") or item.get("name"),
+            "size": item.get("s") or item.get("fs") or item.get("file_size") or item.get("size"),
+            "sha1": item.get("sha") or item.get("sha1") or item.get("file_sha1") or "",
+        }
+
+    def find_existing_remote_file(self, *, pid: int, filename: str, filesize: int, filesha1: str) -> dict | None:
+        offset = 0
+        limit = 200
+        target_sha1 = filesha1.upper()
+        while True:
+            response = self.client.fs_files(
+                {"cid": pid, "limit": limit, "offset": offset, "show_dir": 0, "search_value": filename},
+                **self.request_kwargs(app=False),
+            )
+            items = response.get("data") or []
+            if not isinstance(items, list):
+                break
+            for item in items:
+                normalized = self._normalize_remote_item(item)
+                if normalized["name"] != filename:
+                    continue
+                remote_sha1 = str(normalized["sha1"] or "").upper()
+                try:
+                    remote_size = int(normalized["size"] or 0)
+                except (TypeError, ValueError):
+                    remote_size = 0
+                if remote_sha1:
+                    if remote_sha1 == target_sha1:
+                        return normalized
+                    continue
+                if remote_size == filesize:
+                    return normalized
+            if len(items) < limit:
+                break
+            offset += limit
+        return None
+
     def fast_upload_init(self, *, filename: str, filesize: int, filesha1: str, pid: int, read_range_hash: Callable[[str], str]) -> dict:
         return self.client.upload_file_init(
             filename=filename,

@@ -18,6 +18,7 @@ export interface SyncSource {
   exclude_rules: string[]
   cron_expr?: string | null
   enabled: boolean
+  skip_existing_remote: boolean
   updated_at: string
   schedule_state?: TaskScheduleState
 }
@@ -31,4 +32,5 @@ export interface SourceFormInput {
   exclude_rules_text: string
   cron_expr: string
   enabled: boolean
+  skip_existing_remote: boolean
 }

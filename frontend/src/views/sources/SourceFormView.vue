@@ -39,6 +39,10 @@
         <el-form-item label="Cron 表达式">
           <el-input v-model="form.cron_expr" placeholder="留空表示仅手动执行，例如：0 */6 * * *" />
         </el-form-item>
+        <el-form-item label="防重复上传">
+          <el-switch v-model="form.skip_existing_remote" />
+          <div class="form-tip">开启后，若 115 目标目录已存在同名同大小或同 SHA1 文件，将跳过上传并写入任务日志。</div>
+        </el-form-item>
         <el-form-item label="启用任务">
           <el-switch v-model="form.enabled" />
         </el-form-item>
@@ -75,6 +79,7 @@ const form = reactive<SourceFormInput>({
   exclude_rules_text: '',
   cron_expr: '',
   enabled: true,
+  skip_existing_remote: false,
 })
 
 async function loadSource() {
@@ -95,6 +100,7 @@ async function loadSource() {
   form.exclude_rules_text = source.exclude_rules.join(',')
   form.cron_expr = source.cron_expr ?? ''
   form.enabled = source.enabled
+  form.skip_existing_remote = source.skip_existing_remote
 }
 
 async function handleSubmit() {
@@ -109,5 +115,12 @@ onMounted(loadSource)
 <style scoped>
 .source-form {
   max-width: 760px;
+}
+
+.form-tip {
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

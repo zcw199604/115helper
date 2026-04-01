@@ -31,6 +31,7 @@ class SourceRepository:
             exclude_rules_json=json.dumps(payload.exclude_rules, ensure_ascii=False),
             cron_expr=payload.cron_expr,
             enabled=1 if payload.enabled else 0,
+            skip_existing_remote=1 if payload.skip_existing_remote else 0,
         )
         self.db.add(source)
         self.db.commit()
@@ -48,6 +49,8 @@ class SourceRepository:
                 source.exclude_rules_json = json.dumps(value, ensure_ascii=False)
             elif key == "enabled" and value is not None:
                 source.enabled = 1 if value else 0
+            elif key == "skip_existing_remote" and value is not None:
+                source.skip_existing_remote = 1 if value else 0
             else:
                 setattr(source, key, value)
         self.db.add(source)

@@ -11,6 +11,7 @@ from app import models  # noqa: F401
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.db.base import Base
+from app.db.compat import ensure_schema_compat
 from app.db.session import SessionLocal, engine
 from app.models.source import SyncSource
 from app.services.scheduler_service import scheduler_service
@@ -34,6 +35,7 @@ def on_startup() -> None:
     """应用启动时初始化数据库并恢复调度任务。"""
 
     Base.metadata.create_all(bind=engine)
+    ensure_schema_compat(engine)
     db = SessionLocal()
     try:
         sources = db.query(SyncSource).all()
