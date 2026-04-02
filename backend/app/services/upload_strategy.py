@@ -24,6 +24,14 @@ class UploadResult:
 
 
 @dataclass
+class RemoteDirInfo:
+    """对齐 plugin `_get_folder` 语义的远端目录对象。"""
+
+    remote_dir_id: int
+    remote_dir_path: str
+
+
+@dataclass
 class RemoteDirContext:
     """远端目录批处理上下文。"""
 
@@ -41,11 +49,25 @@ class UploadStrategyService:
         self.default_part_size_mb = default_part_size_mb
         self._dir_cache: dict[int, list[dict]] = {}
         self._dir_id_cache: dict[str, int] = {}
+        self._folder_cache: dict[str, RemoteDirInfo] = {}
+
+    def _get_folder(self, remote_dir_path: str) -> RemoteDirInfo:
+        """获取远端目录；如果不存在则创建，并缓存目录对象。"""
+
+        normalized_path = PurePosixPath(remote_dir_path).as_posix()
+        cached = self._folder_cache.get(normalized_path)
+        if cached is not None:
+            return cached
+        remote_dir_id = self._dir_id_cache.get(normalized_path)
+        if remote_dir_id is None:
+            remote_dir_id = self.gateway.ensure_remote_dir(PurePosixPath(normalized_path))
+            self._dir_id_cache[normalized_path] = remote_dir_id
+        folder = RemoteDirInfo(remote_dir_id=remote_dir_id, remote_dir_path=normalized_path)
+        self._folder_cache[normalized_path] = folder
+        return folder
 
     def resolve_remote_dir(self, remote_dir_path: str) -> int:
-        if remote_dir_path not in self._dir_id_cache:
-            self._dir_id_cache[remote_dir_path] = self.gateway.ensure_remote_dir(PurePosixPath(remote_dir_path))
-        return self._dir_id_cache[remote_dir_path]
+        return self._get_folder(remote_dir_path).remote_dir_id
 
     @staticmethod
     def collect_leaf_remote_dirs(remote_dir_paths: list[str]) -> list[str]:
@@ -76,10 +98,10 @@ class UploadStrategyService:
         for remote_dir_path in leaf_dirs:
             if is_cancel_requested and is_cancel_requested():
                 raise RuntimeError('预创建远端目录时检测到取消请求')
-            remote_dir_id = self.resolve_remote_dir(remote_dir_path)
-            created[remote_dir_path] = remote_dir_id
+            folder = self._get_folder(remote_dir_path)
+            created[remote_dir_path] = folder.remote_dir_id
             if log:
-                log(f"远端叶子目录已就绪: {remote_dir_path} (id={remote_dir_id})")
+                log(f"远端叶子目录已就绪: {folder.remote_dir_path} (id={folder.remote_dir_id})")
         return created
 
     def prepare_dir_context(
@@ -89,14 +111,14 @@ class UploadStrategyService:
         force_refresh_remote_cache: bool,
         log: Callable[[str], None] | None = None,
     ) -> RemoteDirContext:
-        pid = self.resolve_remote_dir(remote_dir_path)
+        folder = self._get_folder(remote_dir_path)
         items = self._get_remote_dir_items(
-            pid=pid,
-            remote_dir_path=remote_dir_path,
+            pid=folder.remote_dir_id,
+            remote_dir_path=folder.remote_dir_path,
             force_refresh_remote_cache=force_refresh_remote_cache,
             log=log,
         )
-        return RemoteDirContext(remote_dir_id=pid, remote_dir_path=remote_dir_path, items=items)
+        return RemoteDirContext(remote_dir_id=folder.remote_dir_id, remote_dir_path=folder.remote_dir_path, items=items)
 
     def _get_remote_dir_items(
         self,

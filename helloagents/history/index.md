@@ -17,6 +17,7 @@
 | 202604011450 | directory_batch_cache | 功能 | ✅已完成 | [链接](2026-04/202604011450_directory_batch_cache/) |
 | 202604021030 | p115_open_upload | 功能 | ✅已完成 | [链接](2026-04/202604021030_p115_open_upload/) |
 | 202604021120 | remote_leaf_precreate | 功能 | ✅已完成 | [链接](2026-04/202604021120_remote_leaf_precreate/) |
+| 202604021155 | align_get_folder | 功能 | ✅已完成 | [链接](2026-04/202604021155_align_get_folder/) |
 
 ---
 
@@ -34,3 +35,4 @@
 - [202604011450_directory_batch_cache](2026-04/202604011450_directory_batch_cache/) - 优化按目录批处理远端缓存与按文件名模式性能
 - [202604021030_p115_open_upload](2026-04/202604021030_p115_open_upload/) - 对齐 plugin 风格的 115 Open 上传链路
 - [202604021120_remote_leaf_precreate](2026-04/202604021120_remote_leaf_precreate/) - 对齐 plugin 的远端叶子目录预创建策略
+- [202604021155_align_get_folder](2026-04/202604021155_align_get_folder/) - 对齐 plugin `_get_folder` 目录对象语义

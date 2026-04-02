@@ -12,6 +12,7 @@
 - 已封装 `P115Client` 初始化、目录确保、秒传初始化与远端目录列举能力。
 - 普通上传优先走 plugin 同款 115 Open 上传链路：`open/upload/init` → 二次校验 → `open/upload/get_token` → `open/upload/resume` → OSS 分片上传。
 - Open 上传过程支持日志回调与取消回调，便于与后台任务和实时日志机制集成。
+- 远端目录准备已抽象为 `_get_folder` 风格统一入口：返回目录对象、缓存目录 ID，并在不存在时自动递归创建。
 - 若未配置 Open 凭证，普通上传会自动回退到 `p115client.upload_file`，避免影响旧部署。
 
 ## 近期补充
