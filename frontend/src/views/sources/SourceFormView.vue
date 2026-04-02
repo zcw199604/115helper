@@ -3,7 +3,7 @@
     <PageHeader :title="pageTitle" description="配置同步目录、上传模式、后缀白名单与定时任务。" />
 
     <el-card>
-      <el-form ref="formRef" :model="form" label-width="140px" class="source-form">
+      <el-form ref="formRef" :model="form" :label-width="isMobile ? 'auto' : '140px'" :label-position="isMobile ? 'top' : 'right'" class="source-form">
         <el-form-item label="配置名称">
           <el-input v-model="form.name" placeholder="例如：电影目录" />
         </el-form-item>
@@ -59,18 +59,22 @@
           </el-select>
           <div class="form-tip">开启后会优先读取本地 SQLite 中的远端目录缓存，再按所选模式判断是否跳过。</div>
         </el-form-item>
-        <el-form-item label="强制同步远端目录文件">
-          <el-switch v-model="form.force_refresh_remote_cache" />
-          <div class="form-tip">开启后，每次执行任务都会强制调用 115 接口刷新目标目录缓存；关闭时优先复用本地 SQLite 缓存。</div>
+        <el-form-item label="强制同步远端目录文件" class="switch-item">
+          <div class="switch-field">
+            <el-switch v-model="form.force_refresh_remote_cache" />
+            <div class="form-tip">开启后，每次执行任务都会强制调用 115 接口刷新目标目录缓存；关闭时优先复用本地 SQLite 缓存。</div>
+          </div>
         </el-form-item>
-        <el-form-item label="启用任务">
-          <el-switch v-model="form.enabled" />
+        <el-form-item label="启用任务" class="switch-item">
+          <div class="switch-field">
+            <el-switch v-model="form.enabled" />
+          </div>
         </el-form-item>
         <el-form-item>
-          <el-space>
+          <div class="form-actions">
             <el-button type="primary" @click="handleSubmit">保存配置</el-button>
             <el-button @click="router.push('/sources')">返回列表</el-button>
-          </el-space>
+          </div>
         </el-form-item>
       </el-form>
     </el-card>
@@ -82,11 +86,13 @@ import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
+import { useResponsive } from '@/composables/useResponsive'
 import { getSource, saveSource } from '@/api/sources'
 import type { SourceFormInput } from '@/types/source'
 
 const route = useRoute()
 const router = useRouter()
+const { isMobile } = useResponsive()
 const sourceId = computed(() => Number(route.params.id || 0))
 const pageTitle = computed(() => (sourceId.value ? '编辑同步源' : '新增同步源'))
 
@@ -147,5 +153,31 @@ onMounted(loadSource)
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.switch-item :deep(.el-form-item__content) {
+  align-items: flex-start;
+}
+
+.switch-field {
+  width: 100%;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .source-form {
+    max-width: 100%;
+  }
+
+  .form-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
 }
 </style>

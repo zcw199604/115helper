@@ -16,3 +16,81 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+#app {
+  min-height: 100vh;
+}
+
+.mobile-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-data-card {
+  border-radius: 14px;
+}
+
+.mobile-data-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.mobile-data-card__title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.mobile-data-card__meta {
+  display: grid;
+  gap: 8px;
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.mobile-data-card__meta .label {
+  color: #6b7280;
+}
+
+.mobile-data-card__footer {
+  margin-top: 12px;
+}
+
+.mobile-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.mobile-action-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mobile-action-grid .el-button {
+  margin-left: 0;
+}
+
+.summary-text {
+  color: #374151;
+  line-height: 1.7;
+}
+
+@media (max-width: 768px) {
+  .el-card {
+    border-radius: 14px;
+  }
+
+  .mobile-action-grid {
+    grid-template-columns: 1fr;
+  }
+}

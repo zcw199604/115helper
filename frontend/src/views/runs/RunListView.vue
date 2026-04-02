@@ -3,7 +3,33 @@
     <PageHeader title="运行记录" description="查看手动执行与 Cron 任务的运行结果。" />
 
     <el-card>
-      <el-table :data="runs" v-loading="loading">
+      <div v-if="isMobile" v-loading="loading" class="mobile-card-list">
+        <el-empty v-if="!runs.length" description="暂无运行记录" />
+        <el-card v-for="item in runs" :key="item.id" shadow="hover" class="mobile-data-card">
+          <div class="mobile-data-card__header">
+            <div class="mobile-data-card__title">运行 #{{ item.id }}</div>
+            <el-tag :type="tagType(item.status)">{{ item.status }}</el-tag>
+          </div>
+          <div class="mobile-data-card__meta">
+            <div><span class="label">同步源：</span>{{ item.source_name }}</div>
+            <div><span class="label">触发方式：</span>{{ item.trigger_type }}</div>
+            <div><span class="label">开始时间：</span>{{ item.started_at }}</div>
+            <div><span class="label">结果摘要：</span></div>
+            <div class="summary-text">
+              总数 {{ item.summary.total_files }} / 秒传 {{ item.summary.fast_uploaded }} /
+              分片 {{ item.summary.multipart_uploaded }} / 跳过 {{ item.summary.skipped }} /
+              失败 {{ item.summary.failed }}
+            </div>
+          </div>
+          <div class="mobile-action-grid">
+            <el-button type="primary" plain @click="router.push(`/runs/${item.id}`)">详情</el-button>
+            <el-button type="warning" plain @click="handleRetry(item.id)">重试</el-button>
+            <el-button v-if="item.status === 'running' || item.status === 'pending'" type="danger" plain @click="handleCancel(item.id)">取消</el-button>
+          </div>
+        </el-card>
+      </div>
+
+      <el-table v-else :data="runs" v-loading="loading">
         <el-table-column prop="id" label="运行 ID" width="110" />
         <el-table-column prop="source_name" label="同步源" min-width="140" />
         <el-table-column prop="trigger_type" label="触发方式" width="120" />
@@ -47,11 +73,13 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import { cancelRun, listRuns, retryRun } from '@/api/runs'
+import { useResponsive } from '@/composables/useResponsive'
 import type { JobRun, RunStatus } from '@/types/run'
 
 const router = useRouter()
 const loading = ref(false)
 const runs = ref<JobRun[]>([])
+const { isMobile } = useResponsive()
 
 function tagType(status: RunStatus) {
   switch (status) {

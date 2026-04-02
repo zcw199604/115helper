@@ -4,26 +4,26 @@
       <el-button @click="router.push('/runs')">返回列表</el-button>
     </PageHeader>
 
-    <el-row :gutter="16" v-if="detail">
-      <el-col :span="6">
+    <el-row :gutter="16" v-if="detail" class="stats-row">
+      <el-col :xs="12" :sm="12" :md="6">
         <el-card shadow="hover"><div class="stat-title">总文件数</div><div class="stat-value">{{ detail.summary.total_files }}</div></el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :sm="12" :md="6">
         <el-card shadow="hover"><div class="stat-title">秒传成功</div><div class="stat-value">{{ detail.summary.fast_uploaded }}</div></el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :sm="12" :md="6">
         <el-card shadow="hover"><div class="stat-title">分片成功</div><div class="stat-value">{{ detail.summary.multipart_uploaded }}</div></el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="12" :sm="12" :md="6">
         <el-card shadow="hover"><div class="stat-title">失败数</div><div class="stat-value danger">{{ detail.summary.failed }}</div></el-card>
       </el-col>
     </el-row>
 
     <el-card class="detail-card" v-loading="loading">
       <template #header>
-        <div class="detail-header">
+        <div class="detail-header" :class="{ 'detail-header-mobile': isMobile }">
           <span>文件明细</span>
-          <el-select v-model="actionFilter" placeholder="筛选结果类型" style="width: 220px">
+          <el-select v-model="actionFilter" placeholder="筛选结果类型" :style="filterStyle">
             <el-option label="全部" value="all" />
             <el-option label="秒传成功" value="fast_uploaded" />
             <el-option label="分片成功" value="multipart_uploaded" />
@@ -34,6 +34,20 @@
       </template>
 
       <el-empty v-if="!detail" description="未找到对应运行记录" />
+      <div v-else-if="isMobile" class="mobile-card-list">
+        <el-empty v-if="!filteredRecords.length" description="暂无文件记录" />
+        <el-card v-for="item in filteredRecords" :key="item.id" shadow="hover" class="mobile-data-card">
+          <div class="mobile-data-card__header">
+            <div class="mobile-data-card__title">{{ item.relative_path }}</div>
+            <el-tag :type="actionTagType(item.action)">{{ item.action }}</el-tag>
+          </div>
+          <div class="mobile-data-card__meta">
+            <div><span class="label">后缀：</span>{{ item.suffix || '无' }}</div>
+            <div><span class="label">处理时间：</span>{{ item.synced_at }}</div>
+            <div><span class="label">说明：</span>{{ item.message || '无' }}</div>
+          </div>
+        </el-card>
+      </div>
       <el-table v-else :data="filteredRecords">
         <el-table-column prop="relative_path" label="相对路径" min-width="240" />
         <el-table-column prop="suffix" label="后缀" width="110" />
@@ -45,12 +59,12 @@
 
     <el-card class="detail-card" v-loading="loading">
       <template #header>
-        <div class="detail-header detail-header-stack">
+        <div class="detail-header detail-header-stack" :class="{ 'detail-header-mobile': isMobile }">
           <div>
             <span>任务级日志</span>
             <el-tag size="small" :type="connectionTagType" class="status-tag">{{ connectionText }}</el-tag>
           </div>
-          <el-select v-model="logLevelFilter" placeholder="筛选日志级别" style="width: 220px">
+          <el-select v-model="logLevelFilter" placeholder="筛选日志级别" :style="filterStyle">
             <el-option label="全部" value="all" />
             <el-option label="信息" value="info" />
             <el-option label="警告" value="warning" />
@@ -68,9 +82,10 @@
             :key="item.id"
             :timestamp="item.created_at"
             :type="timelineType(item.level)"
+            :placement="isMobile ? 'top' : 'bottom'"
           >
             <div class="log-line">
-              <div class="log-line-header">
+              <div class="log-line-header" :class="{ 'log-line-header-mobile': isMobile }">
                 <el-tag size="small" :type="tagByLevel(item.level)">{{ item.level }}</el-tag>
                 <span class="log-stage">{{ item.stage }}</span>
               </div>
@@ -89,7 +104,8 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import { getRunDetail } from '@/api/runs'
 import { subscribeRunLogStream, type LogStreamClient } from '@/api/logStream'
-import type { LogLevel, RunDetail, RunStatus, TaskLogRecord } from '@/types/run'
+import { useResponsive } from '@/composables/useResponsive'
+import type { FileRecord, LogLevel, RunDetail, RunStatus, TaskLogRecord } from '@/types/run'
 
 const route = useRoute()
 const router = useRouter()
@@ -99,7 +115,10 @@ const actionFilter = ref<'all' | 'fast_uploaded' | 'multipart_uploaded' | 'skipp
 const logLevelFilter = ref<'all' | LogLevel>('all')
 const connectionState = ref<'idle' | 'connecting' | 'live' | 'closed' | 'error'>('idle')
 const logContainerRef = ref<HTMLElement>()
+const { isMobile } = useResponsive()
 let streamClient: LogStreamClient | null = null
+
+const filterStyle = computed(() => ({ width: isMobile.value ? '100%' : '220px' }))
 
 const filteredRecords = computed(() => {
   if (!detail.value) {
@@ -149,6 +168,21 @@ const connectionTagType = computed(() => {
       return 'info'
   }
 })
+
+function actionTagType(action: FileRecord['action']) {
+  switch (action) {
+    case 'fast_uploaded':
+      return 'success'
+    case 'multipart_uploaded':
+      return 'primary'
+    case 'skipped':
+      return 'warning'
+    case 'failed':
+      return 'danger'
+    default:
+      return 'info'
+  }
+}
 
 function tagByLevel(level: LogLevel) {
   switch (level) {
@@ -263,6 +297,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.stats-row {
+  row-gap: 16px;
+}
+
 .detail-card {
   margin-top: 16px;
 }
@@ -271,10 +309,16 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .detail-header-stack {
   gap: 12px;
+}
+
+.detail-header-mobile {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .status-tag {
@@ -309,6 +353,10 @@ onBeforeUnmount(() => {
   margin-bottom: 6px;
 }
 
+.log-line-header-mobile {
+  flex-wrap: wrap;
+}
+
 .log-stage {
   font-weight: 600;
   text-transform: capitalize;
@@ -317,5 +365,20 @@ onBeforeUnmount(() => {
 .log-message {
   color: #374151;
   line-height: 1.6;
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .status-tag {
+    margin-left: 6px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .log-timeline {
+    max-height: 55vh;
+  }
 }
 </style>
