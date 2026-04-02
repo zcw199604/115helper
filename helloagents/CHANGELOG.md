@@ -7,6 +7,10 @@
 ## [Unreleased]
 
 ### 新增
+- 新增按 plugin 方式预创建远端叶子目录的能力：上传前先收集所有叶子目录并批量确保目录存在。
+- 新增 plugin 风格的 115 Open 上传链路：支持 `open/upload/init`、二次校验、上传凭证获取、OSS 分片上传与合并。
+- 新增 Open 上传日志回调与取消检查点，后台任务可在分片阶段输出实时日志并响应取消。
+- 新增 `P115_OPEN_ACCESS_TOKEN`、`P115_OPEN_REFRESH_TOKEN` 配置项，用于启用 Open 上传。
 - 初始化知识库与首个方案包，规划“本地目录同步到 115 网盘”的前后端项目。
 - 初始化 FastAPI + Vue 3 前后端项目骨架。
 - 新增 SQLite 数据模型、同步源 API、运行记录 API、系统设置 API。

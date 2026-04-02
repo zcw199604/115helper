@@ -6,7 +6,7 @@
 
 - 多同步任务管理
 - 手动执行 / 定时执行
-- 秒传 / 秒传失败回退分片 / 仅分片上传
+- 秒传 / 秒传失败回退 Open 分片上传 / 仅分片上传
 - 后缀白名单过滤
 - 排除规则过滤
 - 远端防重模式：关闭 / 按文件名跳过 / 按 SHA1 跳过
@@ -59,8 +59,8 @@ data/          其它运行时数据目录
 支持三种上传模式：
 
 - `fast_only`：仅秒传，未命中则跳过
-- `fast_then_multipart`：秒传优先，失败后自动走分片上传
-- `multipart_only`：仅分片上传
+- `fast_then_multipart`：秒传优先，失败后自动走 115 Open 分片上传
+- `multipart_only`：仅分片上传；若配置了 Open 凭证则优先走 Open 分片链路
 
 ### 2.3 远端目录缓存
 
@@ -70,6 +70,7 @@ data/          其它运行时数据目录
 
 - 默认优先使用本地 SQLite 中的远端目录缓存
 - 同目录文件会按远端目录批次处理，同目录只做一次目录缓存装载/刷新
+- 执行前会先收集所有远端叶子目录并预创建，行为对齐 plugin 的目录准备方式
 - 如果缓存不存在，会自动请求 115 并写入缓存
 - 如果任务启用了“强制同步远端目录文件”，则每次执行前都会刷新目标目录缓存
 - 上传成功后，新的远端文件信息也会回写到 SQLite 缓存中
@@ -101,6 +102,7 @@ data/          其它运行时数据目录
 - SQLAlchemy
 - APScheduler
 - p115client
+- oss2（用于 115 Open 分片上传）
 
 ### 前端
 
@@ -130,6 +132,9 @@ APP_ENV=development
 P115_COOKIES=
 # P115_COOKIES_FILE=/absolute/path/to/115-cookies.txt
 P115_CHECK_FOR_RELOGIN=false
+# 可选：配置后分片上传优先走 115 Open 上传链路
+P115_OPEN_ACCESS_TOKEN=
+P115_OPEN_REFRESH_TOKEN=
 DEFAULT_PART_SIZE_MB=10
 DEFAULT_MAX_WORKERS=1
 DATA_DIR=/app/data
@@ -141,9 +146,11 @@ SQLITE_PATH=/app/db/app.db
 
 | 变量名 | 说明 |
 |---|---|
-| `P115_COOKIES` | 115 登录 Cookie 字符串 |
+| `P115_COOKIES` | 115 登录 Cookie 字符串，用于目录查询、目录创建与现有秒传能力 |
 | `P115_COOKIES_FILE` | Cookie 文件路径，和 `P115_COOKIES` 二选一 |
 | `P115_CHECK_FOR_RELOGIN` | 是否启用重新登录检查 |
+| `P115_OPEN_ACCESS_TOKEN` | 可选，115 Open access token；通常可留空，由 refresh token 自动刷新 |
+| `P115_OPEN_REFRESH_TOKEN` | 可选，配置后分片上传优先走 plugin 同款 115 Open 上传链路 |
 | `DEFAULT_PART_SIZE_MB` | 默认分片大小（MB） |
 | `DEFAULT_MAX_WORKERS` | 默认并发数 |
 | `DATA_DIR` | 运行时数据目录 |
@@ -151,6 +158,17 @@ SQLITE_PATH=/app/db/app.db
 | `SQLITE_PATH` | SQLite 文件路径，推荐 `/app/db/app.db` |
 
 > 建议优先使用 `P115_COOKIES_FILE` 或 `--env-file`，不要把敏感 Cookie 直接硬编码到命令行历史里。
+
+### Open 上传说明
+
+- 当前服务已经支持 **plugin 风格的 115 Open 分片上传链路**：
+  - `open/upload/init`
+  - 二次校验（如命中）
+  - `open/upload/get_token`
+  - `open/upload/resume`
+  - OSS 分片上传与合并
+- 若未配置 `P115_OPEN_REFRESH_TOKEN` / `P115_OPEN_ACCESS_TOKEN`，系统会自动回退到原有 `p115client.upload_file` 分片上传。
+- 为了尽量兼容现有部署，**秒传初始化仍保留 Cookie 链路**；Open 凭证主要影响普通分片上传路径。
 
 ---
 

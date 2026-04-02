@@ -11,6 +11,7 @@ dependencies = [
   "apscheduler>=3.10.4",
   "p115client==0.0.8.4.6",
   "httpx[http2]>=0.28.1",
+  "oss2>=2.18.6",
 ]
 
 [project.optional-dependencies]

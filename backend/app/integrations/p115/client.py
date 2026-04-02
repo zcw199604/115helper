@@ -4,6 +4,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from app.core.config import get_settings
+from app.integrations.p115.open_uploader import P115OpenUploader
 
 IOS_UA = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) "
@@ -17,6 +18,7 @@ class P115Gateway:
     def __init__(self) -> None:
         self.settings = get_settings()
         self._client = None
+        self._open_uploader = P115OpenUploader(self.settings)
 
     def _create_client(self):
         from p115client import P115Client
@@ -44,7 +46,7 @@ class P115Gateway:
     @staticmethod
     def humanize_error(exc: Exception) -> str:
         text = str(exc)
-        for token in ["UID=", "CID=", "SEID=", "KID=", "authorization"]:
+        for token in ["UID=", "CID=", "SEID=", "KID=", "authorization", "refresh_token", "access_token", "Bearer "]:
             if token.lower() in text.lower():
                 return "115 接口调用失败，错误信息已脱敏"
         return text or exc.__class__.__name__
@@ -100,7 +102,27 @@ class P115Gateway:
             read_range_bytes_or_hash=read_range_hash,
         )
 
-    def multipart_upload(self, *, file_path: Path, pid: int, filename: str, partsize: int) -> dict:
+    def multipart_upload(
+        self,
+        *,
+        file_path: Path,
+        pid: int,
+        filename: str,
+        partsize: int,
+        log: Callable[[str], None] | None = None,
+        is_cancel_requested: Callable[[], bool] | None = None,
+    ) -> dict:
+        if self._open_uploader.enabled:
+            return self._open_uploader.upload(
+                file_path=file_path,
+                pid=pid,
+                filename=filename,
+                partsize=partsize,
+                log=log,
+                is_cancel_requested=is_cancel_requested,
+            )
+        if log is not None:
+            log("未配置 115 Open 凭证，回退至 p115client 分片上传")
         return self.client.upload_file(
             file=file_path,
             pid=pid,

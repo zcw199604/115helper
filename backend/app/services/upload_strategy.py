@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from app.integrations.p115.client import P115Gateway
 from app.models.enums import DuplicateCheckMode, FileAction, UploadMode
@@ -46,6 +46,41 @@ class UploadStrategyService:
         if remote_dir_path not in self._dir_id_cache:
             self._dir_id_cache[remote_dir_path] = self.gateway.ensure_remote_dir(PurePosixPath(remote_dir_path))
         return self._dir_id_cache[remote_dir_path]
+
+    @staticmethod
+    def collect_leaf_remote_dirs(remote_dir_paths: list[str]) -> list[str]:
+        """收集远端目录中的叶子目录，利用递归建目录避免重复创建父级。"""
+
+        normalized = sorted({PurePosixPath(path).as_posix() for path in remote_dir_paths})
+        leaf_dirs: list[str] = []
+        pure_paths = [PurePosixPath(path) for path in normalized]
+        for candidate in pure_paths:
+            is_parent = any(candidate != other and candidate in other.parents for other in pure_paths)
+            if not is_parent:
+                leaf_dirs.append(candidate.as_posix())
+        return leaf_dirs
+
+    def precreate_remote_dirs(
+        self,
+        remote_dir_paths: list[str],
+        *,
+        log: Callable[[str], None] | None = None,
+        is_cancel_requested: Callable[[], bool] | None = None,
+    ) -> dict[str, int]:
+        """按 plugin 的方式先收集叶子目录并预创建。"""
+
+        leaf_dirs = self.collect_leaf_remote_dirs(remote_dir_paths)
+        created: dict[str, int] = {}
+        if log:
+            log(f"开始预创建远端叶子目录，共 {len(leaf_dirs)} 个")
+        for remote_dir_path in leaf_dirs:
+            if is_cancel_requested and is_cancel_requested():
+                raise RuntimeError('预创建远端目录时检测到取消请求')
+            remote_dir_id = self.resolve_remote_dir(remote_dir_path)
+            created[remote_dir_path] = remote_dir_id
+            if log:
+                log(f"远端叶子目录已就绪: {remote_dir_path} (id={remote_dir_id})")
+        return created
 
     def prepare_dir_context(
         self,
@@ -154,6 +189,8 @@ class UploadStrategyService:
         upload_mode: UploadMode,
         *,
         duplicate_check_mode: DuplicateCheckMode = DuplicateCheckMode.NONE,
+        log: Callable[[str], None] | None = None,
+        is_cancel_requested: Callable[[], bool] | None = None,
     ) -> UploadResult:
         file_sha1: str | None = None
 
@@ -228,10 +265,13 @@ class UploadStrategyService:
             pid=context.remote_dir_id,
             filename=candidate.absolute_path.name,
             partsize=self.default_part_size_mb * 1024 * 1024,
+            log=log,
+            is_cancel_requested=is_cancel_requested,
         )
         data = response.get('data', response)
         remote_file_id = str(data.get('file_id') or '') or None
-        remote_pickcode = data.get('pickcode')
+        remote_pickcode = data.get('pickcode') or data.get('pick_code')
+        file_sha1 = response.get('filesha1') or file_sha1
         self._store_uploaded_file(
             context=context,
             filename=candidate.absolute_path.name,
@@ -240,9 +280,11 @@ class UploadStrategyService:
             remote_file_id=remote_file_id,
             remote_pickcode=remote_pickcode,
         )
+        action = FileAction.FAST_UPLOADED if response.get('reuse') else FileAction.MULTIPART_UPLOADED
+        message = 'Open 链路命中秒传' if response.get('reuse') else 'Open 分片上传完成'
         return UploadResult(
-            action=FileAction.MULTIPART_UPLOADED,
-            message='分片上传完成',
+            action=action,
+            message=message,
             file_sha1=file_sha1,
             remote_file_id=remote_file_id,
             remote_pickcode=remote_pickcode,

@@ -116,6 +116,15 @@ class RunService:
                 remote_dir_path = uploader.resolve_remote_dir_path(source.remote_path, candidate)
                 grouped_candidates.setdefault(remote_dir_path, []).append(candidate)
 
+            if grouped_candidates:
+                uploader.precreate_remote_dirs(
+                    list(grouped_candidates.keys()),
+                    log=lambda message: self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-dir-prepare', message=message),
+                    is_cancel_requested=lambda: self._cancel_requested(run.id),
+                )
+                if self._stop_if_cancelled(run, source, 'remote-dir-prepare', summary):
+                    return run
+
             for remote_dir_path, dir_candidates in grouped_candidates.items():
                 if self._stop_if_cancelled(run, source, 'dir', summary):
                     return run
@@ -135,6 +144,14 @@ class RunService:
                             context,
                             UploadMode(source.upload_mode),
                             duplicate_check_mode=duplicate_check_mode,
+                            log=lambda message, candidate=candidate: self.log_service.log(
+                                run_id=run.id,
+                                source_id=source.id,
+                                level='INFO',
+                                stage='open-upload',
+                                message=f"{candidate.relative_path.as_posix()} -> {message}",
+                            ),
+                            is_cancel_requested=lambda: self._cancel_requested(run.id),
                         )
                         if result.action == FileAction.FAST_UPLOADED:
                             summary['fast_uploaded'] += 1

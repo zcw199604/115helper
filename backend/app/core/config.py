@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     p115_cookies: str = ""
     p115_cookies_file: Path | None = None
     p115_check_for_relogin: bool = False
+    p115_open_access_token: str = ""
+    p115_open_refresh_token: str = ""
     default_part_size_mb: int = 10
     default_max_workers: int = 1
     frontend_dist: Path = Field(default=Path("frontend/dist"))
