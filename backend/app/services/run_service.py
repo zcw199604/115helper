@@ -19,7 +19,7 @@ from app.schemas.run import FileRecordRead, RunDetail, RunRead
 from app.services.async_run_executor import async_run_executor
 from app.services.remote_dir_cache_service import RemoteDirCacheService
 from app.services.scheduler_service import scheduler_service
-from app.services.sync_scanner import scan_local_files
+from app.services.sync_scanner import calc_sha1, scan_local_files
 from app.services.task_log_service import TaskLogService
 from app.services.upload_strategy import RemoteDirContext, UploadResult, UploadStrategyService
 
@@ -137,10 +137,18 @@ class RunService:
         if gateway.get_dir_id_by_path(target) > 0:
             return None
         current = PurePosixPath('/')
+        current_id = 0
         for part in target.parts[1:]:
             candidate = current.joinpath(part)
-            if gateway.get_dir_id_by_path(candidate) > 0:
+            candidate_id = gateway.get_dir_id_by_path(candidate)
+            if candidate_id > 0:
                 current = candidate
+                current_id = candidate_id
+                continue
+            child_dir = gateway.find_child_dir(parent_id=current_id, name=part)
+            if child_dir is not None:
+                current = candidate
+                current_id = int(child_dir.get('id') or 0)
                 continue
             return candidate.as_posix()
         return target.as_posix()
@@ -318,6 +326,77 @@ class RunService:
                     self._append_summary(summary=summary, action=FileAction.FAILED)
                     self._write_file_record(run=run, source=source, candidate=candidate, action=FileAction.FAILED, message=message, file_sha1=None, remote_file_id=None, remote_pickcode=None)
 
+    def _should_skip_final_target(
+        self,
+        *,
+        uploader: UploadStrategyService,
+        remote_dir_path: str,
+        candidate,
+        duplicate_check_mode: DuplicateCheckMode,
+        force_refresh_remote_cache: bool,
+        run: JobRun,
+        source: SyncSource,
+    ) -> UploadResult | None:
+        if duplicate_check_mode == DuplicateCheckMode.NONE:
+            return None
+        context = uploader.prepare_plugin_aligned_context(
+            remote_dir_path=remote_dir_path,
+            duplicate_check_mode=duplicate_check_mode,
+            force_refresh_remote_cache=force_refresh_remote_cache,
+            log=lambda message, candidate=candidate: self._log(run=run, source=source, level='INFO', stage='remote-cache', message=f"{candidate.relative_path.as_posix()} -> {message}"),
+            is_cancel_requested=lambda: self._cancel_requested(run.id),
+        )
+        items = context.items
+        if duplicate_check_mode == DuplicateCheckMode.NAME:
+            for item in items:
+                if item.get('name') == candidate.absolute_path.name:
+                    return UploadResult(
+                        action=FileAction.SKIPPED,
+                        message=f"最终目标目录已存在同名文件，按文件名匹配命中，跳过临时目录上传 (id={item.get('id')}, pickcode={item.get('pickcode')})",
+                        remote_file_id=str(item.get('id') or '') or None,
+                        remote_pickcode=item.get('pickcode'),
+                        remote_dir_id=context.remote_dir_id,
+                        remote_dir_path=context.remote_dir_path,
+                    )
+            return None
+        file_sha1 = calc_sha1(candidate.absolute_path)
+        for item in items:
+            if str(item.get('sha1') or '').upper() == file_sha1.upper():
+                return UploadResult(
+                    action=FileAction.SKIPPED,
+                    message=f"最终目标目录已存在文件，按 SHA1 匹配命中，跳过临时目录上传 (id={item.get('id')}, pickcode={item.get('pickcode')})",
+                    file_sha1=file_sha1,
+                    remote_file_id=str(item.get('id') or '') or None,
+                    remote_pickcode=item.get('pickcode'),
+                    remote_dir_id=context.remote_dir_id,
+                    remote_dir_path=context.remote_dir_path,
+                )
+        return None
+
+    def _record_result(
+        self,
+        *,
+        run: JobRun,
+        source: SyncSource,
+        candidate,
+        result: UploadResult,
+        summary: dict,
+        stage: str = 'upload',
+    ) -> None:
+        self._append_summary(summary=summary, action=result.action)
+        self._write_file_record(
+            run=run,
+            source=source,
+            candidate=candidate,
+            action=result.action,
+            message=result.message,
+            file_sha1=result.file_sha1,
+            remote_file_id=result.remote_file_id,
+            remote_pickcode=result.remote_pickcode,
+        )
+        level = 'ERROR' if result.action == FileAction.FAILED else 'INFO'
+        self._log(run=run, source=source, level=level, stage=stage, message=f'文件处理完成: {candidate.relative_path.as_posix()} -> {result.message}')
+
     def _execute_tmp_stage_then_move_flow(
         self,
         *,
@@ -368,6 +447,18 @@ class RunService:
                 final_remote_file_path = uploader.resolve_remote_file_path(source.remote_path, candidate)
                 stage_remote_dir_path = PurePosixPath(stage_root).joinpath(*PurePosixPath(final_remote_dir_path).parts[1:]).as_posix()
                 stage_remote_file_path = PurePosixPath(stage_root).joinpath(*PurePosixPath(final_remote_file_path).parts[1:]).as_posix()
+                skip_result = self._should_skip_final_target(
+                    uploader=uploader,
+                    remote_dir_path=final_remote_dir_path,
+                    candidate=candidate,
+                    duplicate_check_mode=duplicate_check_mode,
+                    force_refresh_remote_cache=force_refresh_remote_cache,
+                    run=run,
+                    source=source,
+                )
+                if skip_result is not None:
+                    staged_results.append(StagedCandidateResult(candidate, final_remote_dir_path, final_remote_file_path, stage_remote_dir_path, stage_remote_file_path, skip_result))
+                    continue
                 try:
                     context = uploader.prepare_plugin_aligned_context(
                         remote_dir_path=stage_remote_dir_path,
@@ -408,10 +499,21 @@ class RunService:
 
             if stage_failed:
                 for item in staged_results:
-                    self._append_summary(summary=summary, action=item.result.action if item.result.action != FileAction.FAST_UPLOADED and item.result.action != FileAction.MULTIPART_UPLOADED else FileAction.FAILED)
-                    action = item.result.action if item.result.action in {FileAction.SKIPPED, FileAction.FAILED} else FileAction.FAILED
-                    message = item.result.message if action in {FileAction.SKIPPED, FileAction.FAILED} else f'{item.result.message}；临时目录阶段未全部完成，未执行移动'
-                    self._write_file_record(run=run, source=source, candidate=item.candidate, action=action, message=message, file_sha1=item.result.file_sha1, remote_file_id=item.result.remote_file_id, remote_pickcode=item.result.remote_pickcode)
+                    if item.result.action == FileAction.SKIPPED:
+                        self._record_result(run=run, source=source, candidate=item.candidate, result=item.result, summary=summary, stage='upload')
+                        continue
+                    failed_result = item.result
+                    if failed_result.action in {FileAction.FAST_UPLOADED, FileAction.MULTIPART_UPLOADED}:
+                        failed_result = UploadResult(
+                            action=FileAction.FAILED,
+                            message=f'{item.result.message}；临时目录阶段未全部完成，未执行移动',
+                            file_sha1=item.result.file_sha1,
+                            remote_file_id=item.result.remote_file_id,
+                            remote_pickcode=item.result.remote_pickcode,
+                            remote_dir_id=item.result.remote_dir_id,
+                            remote_dir_path=item.result.remote_dir_path,
+                        )
+                    self._record_result(run=run, source=source, candidate=item.candidate, result=failed_result, summary=summary, stage='upload')
                 continue
 
             try:
@@ -421,6 +523,9 @@ class RunService:
                 gateway.move_dir(source_dir_path=stage_missing_root, target_parent_path=final_parent)
                 self._log(run=run, source=source, level='INFO', stage='tmp-move', message=f'临时目录移动完成: {missing_root}')
                 for item in staged_results:
+                    if item.result.action == FileAction.SKIPPED:
+                        self._record_result(run=run, source=source, candidate=item.candidate, result=item.result, summary=summary, stage='upload')
+                        continue
                     final_dir_id = gateway.get_dir_id_by_path(PurePosixPath(item.final_remote_dir_path))
                     final_context = RemoteDirContext(remote_dir_id=final_dir_id, remote_dir_path=item.final_remote_dir_path, items=[])
                     verified = uploader.verify_uploaded_file(
@@ -437,8 +542,7 @@ class RunService:
                         item.result.message = f'{item.result.message}；临时目录已移动到最终目录并确认成功'
                     else:
                         item.result.message = f'{item.result.message}；临时目录已移动到最终目录，但最终路径确认未命中'
-                    self._append_summary(summary=summary, action=item.result.action)
-                    self._write_file_record(run=run, source=source, candidate=item.candidate, action=item.result.action, message=item.result.message, file_sha1=item.result.file_sha1, remote_file_id=item.result.remote_file_id, remote_pickcode=item.result.remote_pickcode)
+                    self._record_result(run=run, source=source, candidate=item.candidate, result=item.result, summary=summary, stage='upload')
             except Exception as exc:
                 message = gateway.humanize_error(exc)
                 self._log(run=run, source=source, level='ERROR', stage='tmp-move', message=f'临时目录移动失败: {missing_root} -> {message}')
