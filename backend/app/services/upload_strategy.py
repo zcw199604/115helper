@@ -73,7 +73,7 @@ class PluginAlignedFolderResolver:
 
 
 class UploadedFileVerifier:
-    """上传后按路径轮询确认单文件。"""
+    """上传后按 Plugin 风格延迟重试确认单文件。"""
 
     def __init__(self, gateway: P115Gateway) -> None:
         self.gateway = gateway
@@ -84,22 +84,23 @@ class UploadedFileVerifier:
         *,
         log: Callable[[str], None] | None = None,
         is_cancel_requested: Callable[[], bool] | None = None,
-        attempts: int = 3,
-        interval_seconds: float = 0.2,
+        retry_delays: tuple[float, ...] = (2.0, 4.0, 8.0),
     ) -> dict | None:
         normalized = PurePosixPath(remote_file_path).as_posix()
-        for attempt in range(1, attempts + 1):
+        total_attempts = len(retry_delays)
+        for attempt, delay_seconds in enumerate(retry_delays, start=1):
             if is_cancel_requested and is_cancel_requested():
                 raise RuntimeError('上传后确认阶段检测到取消请求')
+            if log:
+                log(f'上传后按 Plugin 风格等待确认: {normalized}，第 {attempt}/{total_attempts} 次，等待 {delay_seconds:g} 秒')
+            sleep(delay_seconds)
             item = self.gateway.get_remote_file_by_path(PurePosixPath(normalized))
             if item is not None:
                 if log:
                     log(f'上传后轮询确认成功: {normalized} (attempt={attempt})')
                 return item
             if log:
-                log(f'上传后轮询未命中，准备重试: {normalized} (attempt={attempt}/{attempts})')
-            if attempt < attempts:
-                sleep(interval_seconds)
+                log(f'上传后轮询未命中: {normalized} (attempt={attempt}/{total_attempts})')
         return None
 
 

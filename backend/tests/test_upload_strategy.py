@@ -191,3 +191,40 @@ def test_verify_uploaded_file_updates_cache(tmp_path: Path) -> None:
     assert verified is not None
     assert verified['id'] == '901'
     assert cache.upserts[-1]['remote_file_id'] == '901'
+
+
+def test_verify_uploaded_file_uses_plugin_style_backoff(tmp_path: Path, monkeypatch) -> None:
+    candidate = make_candidate(tmp_path)
+    gateway = FakeGateway(items=[])
+    cache = FakeRemoteCacheService(exists=False)
+    service = UploadStrategyService(gateway, cache)
+    context = service.prepare_plugin_aligned_context(
+        remote_dir_path='/remote',
+        duplicate_check_mode=DuplicateCheckMode.NONE,
+        force_refresh_remote_cache=False,
+    )
+
+    delays: list[float] = []
+    call_count = {'value': 0}
+
+    def fake_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    def fake_get_item(_path: PurePosixPath):
+        call_count['value'] += 1
+        if call_count['value'] == 3:
+            return {'id': '903', 'pickcode': 'pc903', 'name': 'demo.mkv', 'sha1': calc_sha1(candidate.absolute_path), 'size': candidate.size}
+        return None
+
+    monkeypatch.setattr('app.services.upload_strategy.sleep', fake_sleep)
+    gateway.get_remote_file_by_path = fake_get_item
+
+    verified = service.verify_uploaded_file(
+        remote_file_path='/remote/demo.mkv',
+        context=context,
+        file_sha1=calc_sha1(candidate.absolute_path),
+        size=candidate.size,
+    )
+
+    assert verified is not None
+    assert delays == [2.0, 4.0, 8.0]
