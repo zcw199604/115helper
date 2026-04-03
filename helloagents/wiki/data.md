@@ -18,7 +18,7 @@
 | local_path | text | 非空 | 本地源目录 |
 | remote_path | text | 非空 | 115 目标路径 |
 | upload_mode | text | 非空 | 上传模式 |
-| upload_flow_mode | text | 非空 | 执行方式：plugin_aligned / batch_cached |
+| upload_flow_mode | text | 非空 | 执行方式：plugin_aligned / tmp_stage_then_move / batch_cached |
 | suffix_rules_json | text | 非空 | 后缀白名单 JSON |
 | exclude_rules_json | text | 非空 | 排除规则 JSON |
 | cron_expr | text | 可空 | 定时表达式 |

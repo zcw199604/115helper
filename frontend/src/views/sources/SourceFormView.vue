@@ -23,9 +23,10 @@
         <el-form-item label="执行方式">
           <el-select v-model="form.upload_flow_mode" style="width: 100%">
             <el-option label="插件对齐" value="plugin_aligned" />
+            <el-option label="临时目录上传后移动" value="tmp_stage_then_move" />
             <el-option label="批处理缓存兼容模式" value="batch_cached" />
           </el-select>
-          <div class="form-tip">插件对齐模式会按文件逐个准备目录并在上传后轮询确认；批处理缓存模式保留旧版“预创建目录 + 目录缓存预热”行为。</div>
+          <div class="form-tip">插件对齐模式按文件直传；临时目录上传后移动模式会先上传到 115 `/tmp/115helper_stage/...`，再把整目录移动到目标位置；批处理缓存模式保留旧版“预创建目录 + 目录缓存预热”行为。</div>
         </el-form-item>
         <el-form-item label="后缀白名单">
           <el-select

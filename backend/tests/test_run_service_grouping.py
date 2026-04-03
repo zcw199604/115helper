@@ -1,7 +1,7 @@
 """运行服务执行方式测试。"""
 
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
 from app.models.enums import FileAction, UploadFlowMode
@@ -69,16 +69,33 @@ class FakeUploader:
         return SimpleNamespace(remote_dir_id=1, remote_dir_path=remote_dir_path, items=[])
 
     def upload_candidate_in_context(self, candidate, context, upload_mode, *, duplicate_check_mode, log=None, is_cancel_requested=None):
-        return SimpleNamespace(action=FileAction.SKIPPED, message='ok', file_sha1=None, remote_file_id=None, remote_pickcode=None)
+        return SimpleNamespace(action=FileAction.MULTIPART_UPLOADED, message='ok', file_sha1=None, remote_file_id='fid1', remote_pickcode='pc1')
 
     def verify_uploaded_file(self, *, remote_file_path, context, file_sha1, size, log=None, is_cancel_requested=None):
         self.verified_paths.append(remote_file_path)
         return {'id': 'v1', 'pickcode': 'pc1'}
 
 
-def _patch_common(monkeypatch, service, candidates):
+class FakeGateway:
+    def __init__(self):
+        self.moved = []
+
+    def humanize_error(self, exc):
+        return str(exc)
+
+    def get_dir_id_by_path(self, path: PurePosixPath):
+        raw = path.as_posix()
+        existing = {'/': 0, '/remote': 1, '/remote/existing': 2, '/tmp': 3}
+        return existing.get(raw, 0)
+
+    def move_dir(self, *, source_dir_path: PurePosixPath, target_parent_path: PurePosixPath, verify_delays=(2.0, 4.0, 8.0)):
+        self.moved.append((source_dir_path.as_posix(), target_parent_path.as_posix()))
+        return 99
+
+
+def _patch_common(monkeypatch, service, candidates, gateway=None):
     monkeypatch.setattr('app.services.run_service.scan_local_files', lambda *_args, **_kwargs: candidates)
-    monkeypatch.setattr('app.services.run_service.P115Gateway', lambda: SimpleNamespace(humanize_error=lambda exc: str(exc)))
+    monkeypatch.setattr('app.services.run_service.P115Gateway', lambda: gateway or FakeGateway())
     monkeypatch.setattr('app.services.run_service.UploadStrategyService', FakeUploader)
     monkeypatch.setattr('app.services.run_service.scheduler_service.is_reserved', lambda _id: False)
     monkeypatch.setattr('app.services.run_service.scheduler_service.reserve_source', lambda _id: True)
@@ -123,3 +140,23 @@ def test_execute_run_prepares_each_file_in_plugin_aligned_mode(monkeypatch, tmp_
     service.execute_run(1)
 
     assert FakeUploader.prepared_paths == ['/remote/Season 1', '/remote/Season 2']
+
+
+def test_execute_run_stages_missing_dir_and_moves_after_upload(monkeypatch, tmp_path: Path):
+    run = SimpleNamespace(id=8, source_id=2, status='pending', finished_at=None, started_at=None, summary_json='{}', trigger_type='manual', error_message=None, created_at=datetime.now(timezone.utc))
+    source = SimpleNamespace(id=2, name='任务A', local_path=str(tmp_path), remote_path='/remote', upload_mode='fast_then_multipart', upload_flow_mode=UploadFlowMode.TMP_STAGE_THEN_MOVE.value, suffix_rules_json='[]', exclude_rules_json='[]', duplicate_check_mode='none', skip_existing_remote=0, force_refresh_remote_cache=0)
+    db = DummyDB(run, source)
+    service = RunService(db)
+    gateway = FakeGateway()
+
+    candidates = [
+        SimpleNamespace(relative_path=Path('missing/a.mkv'), absolute_path=tmp_path / 'a.mkv', suffix='.mkv', size=1),
+    ]
+
+    _patch_common(monkeypatch, service, candidates, gateway=gateway)
+    FakeUploader.prepared_paths = []
+    FakeUploader.verified_paths = []
+    service.execute_run(8)
+
+    assert '/tmp/115helper_stage/source_2/run_8/remote/missing' in FakeUploader.prepared_paths
+    assert gateway.moved == [('/tmp/115helper_stage/source_2/run_8/remote/missing', '/remote')]

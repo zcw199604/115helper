@@ -1,5 +1,5 @@
 export type UploadMode = 'fast_only' | 'fast_then_multipart' | 'multipart_only'
-export type UploadFlowMode = 'plugin_aligned' | 'batch_cached'
+export type UploadFlowMode = 'plugin_aligned' | 'batch_cached' | 'tmp_stage_then_move'
 export type DuplicateCheckMode = 'none' | 'name' | 'sha1'
 export type RunStatus = 'pending' | 'running' | 'success' | 'partial_failed' | 'failed' | 'cancelled'
 

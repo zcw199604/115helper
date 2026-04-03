@@ -36,3 +36,17 @@ def test_source_create_duplicate_mode() -> None:
     )
     assert payload.duplicate_check_mode == DuplicateCheckMode.NAME
     assert payload.upload_flow_mode == UploadFlowMode.BATCH_CACHED
+
+
+def test_source_create_tmp_stage_flow_mode() -> None:
+    payload = SourceCreate(
+        name='demo',
+        local_path='/tmp',
+        remote_path='/sync',
+        upload_mode=UploadMode.FAST_THEN_MULTIPART,
+        upload_flow_mode=UploadFlowMode.TMP_STAGE_THEN_MOVE,
+        suffix_rules=[],
+        exclude_rules=[],
+        enabled=True,
+    )
+    assert payload.upload_flow_mode == UploadFlowMode.TMP_STAGE_THEN_MOVE

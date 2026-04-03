@@ -16,6 +16,7 @@
 - 若未配置 Open 凭证，普通上传会自动回退到 `p115client.upload_file`，避免影响旧部署。
 
 ## 近期补充
+- 新增 `move_entry` / `move_dir` 封装，用于将临时上传目录整目录移动到最终父目录。
 - 新增 `get_dir_id_by_path`、`find_child_dir`、`create_child_dir`、`ensure_remote_dir_plugin_style` 与 `get_remote_file_by_path` 封装，用于对齐插件式目录上传与上传后轮询确认。
 - 新增同步源级 `upload_flow_mode`，允许在插件对齐模式与旧版批处理缓存模式之间切换。
 - 新增 `wiki/compare-115-upload-flow.md`，系统对比 115helper 与 MoviePilot-Plugins 在目录创建、目录内文件同步顺序与上传 API 链路上的差异。

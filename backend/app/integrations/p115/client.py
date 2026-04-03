@@ -1,6 +1,7 @@
 """115 客户端封装，隔离第三方依赖细节。"""
 
 from pathlib import Path, PurePosixPath
+from time import sleep
 from typing import Callable
 
 from app.core.config import get_settings
@@ -19,6 +20,7 @@ class P115Gateway:
         self.settings = get_settings()
         self._client = None
         self._open_uploader = P115OpenUploader(self.settings)
+        self._move_call_counter = 0
 
     def _create_client(self):
         from p115client import P115Client
@@ -177,6 +179,32 @@ class P115Gateway:
             if item.get("name") == normalized.name:
                 return item
         return None
+
+    def move_entry(self, *, entry_id: int, target_parent_id: int) -> None:
+        self._move_call_counter = (self._move_call_counter + 1) % 2
+        if self._move_call_counter == 0:
+            response = self.client.fs_move(entry_id, pid=target_parent_id, **self.request_kwargs(app=False))
+        else:
+            response = self.client.fs_move_app(entry_id, pid=target_parent_id, **self.request_kwargs())
+        if response.get("state") is False:
+            raise RuntimeError(f"115 移动目录失败: {response}")
+
+    def move_dir(self, *, source_dir_path: PurePosixPath, target_parent_path: PurePosixPath, verify_delays: tuple[float, ...] = (2.0, 4.0, 8.0)) -> int:
+        source_id = self.get_dir_id_by_path(source_dir_path)
+        if source_id <= 0:
+            raise RuntimeError(f"待移动目录不存在: {source_dir_path.as_posix()}")
+        target_parent_id = self.ensure_remote_dir_plugin_style(target_parent_path)
+        self.move_entry(entry_id=source_id, target_parent_id=target_parent_id)
+        final_dir = target_parent_path.joinpath(source_dir_path.name)
+        for delay in verify_delays:
+            sleep(delay)
+            final_id = self.get_dir_id_by_path(final_dir)
+            if final_id > 0:
+                return final_id
+        final_id = self.get_dir_id_by_path(final_dir)
+        if final_id <= 0:
+            raise RuntimeError(f"目录移动后确认失败: {final_dir.as_posix()}")
+        return final_id
 
     def fast_upload_init(self, *, filename: str, filesize: int, filesha1: str, pid: int, read_range_hash: Callable[[str], str]) -> dict:
         return self.client.upload_file_init(

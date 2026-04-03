@@ -16,6 +16,7 @@ class UploadFlowMode(str, Enum):
 
     PLUGIN_ALIGNED = "plugin_aligned"
     BATCH_CACHED = "batch_cached"
+    TMP_STAGE_THEN_MOVE = "tmp_stage_then_move"
 
 
 class DuplicateCheckMode(str, Enum):
