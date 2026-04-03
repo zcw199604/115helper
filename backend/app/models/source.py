@@ -22,6 +22,7 @@ class SyncSource(Base):
     local_path: Mapped[str] = mapped_column(Text, nullable=False)
     remote_path: Mapped[str] = mapped_column(Text, nullable=False)
     upload_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    upload_flow_mode: Mapped[str] = mapped_column(String(24), default="plugin_aligned", nullable=False)
     suffix_rules_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     exclude_rules_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     cron_expr: Mapped[str | None] = mapped_column(String(100), nullable=True)

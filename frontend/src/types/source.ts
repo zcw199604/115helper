@@ -1,4 +1,5 @@
 export type UploadMode = 'fast_only' | 'fast_then_multipart' | 'multipart_only'
+export type UploadFlowMode = 'plugin_aligned' | 'batch_cached'
 export type DuplicateCheckMode = 'none' | 'name' | 'sha1'
 export type RunStatus = 'pending' | 'running' | 'success' | 'partial_failed' | 'failed' | 'cancelled'
 
@@ -15,6 +16,7 @@ export interface SyncSource {
   local_path: string
   remote_path: string
   upload_mode: UploadMode
+  upload_flow_mode: UploadFlowMode
   suffix_rules: string[]
   exclude_rules: string[]
   cron_expr?: string | null
@@ -30,6 +32,7 @@ export interface SourceFormInput {
   local_path: string
   remote_path: string
   upload_mode: UploadMode
+  upload_flow_mode: UploadFlowMode
   suffix_rules: string[]
   exclude_rules: string[]
   cron_expr: string

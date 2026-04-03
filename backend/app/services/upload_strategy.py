@@ -1,8 +1,11 @@
 """上传策略执行逻辑。"""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from time import sleep
 
 from app.integrations.p115.client import P115Gateway
 from app.models.enums import DuplicateCheckMode, FileAction, UploadMode
@@ -25,7 +28,7 @@ class UploadResult:
 
 @dataclass
 class RemoteDirInfo:
-    """对齐 plugin `_get_folder` 语义的远端目录对象。"""
+    """远端目录对象。"""
 
     remote_dir_id: int
     remote_dir_path: str
@@ -40,6 +43,66 @@ class RemoteDirContext:
     items: list[dict]
 
 
+class PluginAlignedFolderResolver:
+    """按插件方式逐级探测并创建目录。"""
+
+    def __init__(self, gateway: P115Gateway) -> None:
+        self.gateway = gateway
+        self._folder_cache: dict[str, RemoteDirInfo] = {"/": RemoteDirInfo(remote_dir_id=0, remote_dir_path="/")}
+
+    def resolve(self, remote_dir_path: str, *, log: Callable[[str], None] | None = None, is_cancel_requested: Callable[[], bool] | None = None) -> RemoteDirInfo:
+        normalized = PurePosixPath(remote_dir_path).as_posix()
+        cached = self._folder_cache.get(normalized)
+        if cached is not None:
+            return cached
+
+        if is_cancel_requested and is_cancel_requested():
+            raise RuntimeError('准备远端目录时检测到取消请求')
+
+        remote_dir = PurePosixPath(normalized)
+        directory_id = self.gateway.get_dir_id_by_path(remote_dir)
+        if directory_id <= 0:
+            if log:
+                log(f'按插件方式准备远端目录: {normalized}')
+            directory_id = self.gateway.ensure_remote_dir_plugin_style(remote_dir)
+            if log:
+                log(f'远端目录已就绪: {normalized} (id={directory_id})')
+        folder = RemoteDirInfo(remote_dir_id=directory_id, remote_dir_path=normalized)
+        self._folder_cache[normalized] = folder
+        return folder
+
+
+class UploadedFileVerifier:
+    """上传后按路径轮询确认单文件。"""
+
+    def __init__(self, gateway: P115Gateway) -> None:
+        self.gateway = gateway
+
+    def verify(
+        self,
+        remote_file_path: str,
+        *,
+        log: Callable[[str], None] | None = None,
+        is_cancel_requested: Callable[[], bool] | None = None,
+        attempts: int = 3,
+        interval_seconds: float = 0.2,
+    ) -> dict | None:
+        normalized = PurePosixPath(remote_file_path).as_posix()
+        for attempt in range(1, attempts + 1):
+            if is_cancel_requested and is_cancel_requested():
+                raise RuntimeError('上传后确认阶段检测到取消请求')
+            item = self.gateway.get_remote_file_by_path(PurePosixPath(normalized))
+            if item is not None:
+                if log:
+                    log(f'上传后轮询确认成功: {normalized} (attempt={attempt})')
+                return item
+            if log:
+                log(f'上传后轮询未命中，准备重试: {normalized} (attempt={attempt}/{attempts})')
+            if attempt < attempts:
+                sleep(interval_seconds)
+        return None
+
+
 class UploadStrategyService:
     """根据上传模式执行上传。"""
 
@@ -49,21 +112,18 @@ class UploadStrategyService:
         self.default_part_size_mb = default_part_size_mb
         self._dir_cache: dict[int, list[dict]] = {}
         self._dir_id_cache: dict[str, int] = {}
-        self._folder_cache: dict[str, RemoteDirInfo] = {}
+        self._folder_resolver = PluginAlignedFolderResolver(gateway)
+        self._verifier = UploadedFileVerifier(gateway)
 
-    def _get_folder(self, remote_dir_path: str) -> RemoteDirInfo:
-        """获取远端目录；如果不存在则创建，并缓存目录对象。"""
-
-        normalized_path = PurePosixPath(remote_dir_path).as_posix()
-        cached = self._folder_cache.get(normalized_path)
-        if cached is not None:
-            return cached
-        remote_dir_id = self._dir_id_cache.get(normalized_path)
-        if remote_dir_id is None:
-            remote_dir_id = self.gateway.ensure_remote_dir(PurePosixPath(normalized_path))
-            self._dir_id_cache[normalized_path] = remote_dir_id
-        folder = RemoteDirInfo(remote_dir_id=remote_dir_id, remote_dir_path=normalized_path)
-        self._folder_cache[normalized_path] = folder
+    def _get_folder(
+        self,
+        remote_dir_path: str,
+        *,
+        log: Callable[[str], None] | None = None,
+        is_cancel_requested: Callable[[], bool] | None = None,
+    ) -> RemoteDirInfo:
+        folder = self._folder_resolver.resolve(remote_dir_path, log=log, is_cancel_requested=is_cancel_requested)
+        self._dir_id_cache[folder.remote_dir_path] = folder.remote_dir_id
         return folder
 
     def resolve_remote_dir(self, remote_dir_path: str) -> int:
@@ -89,7 +149,7 @@ class UploadStrategyService:
         log: Callable[[str], None] | None = None,
         is_cancel_requested: Callable[[], bool] | None = None,
     ) -> dict[str, int]:
-        """按 plugin 的方式先收集叶子目录并预创建。"""
+        """兼容旧批处理模式：预创建远端叶子目录。"""
 
         leaf_dirs = self.collect_leaf_remote_dirs(remote_dir_paths)
         created: dict[str, int] = {}
@@ -98,10 +158,8 @@ class UploadStrategyService:
         for remote_dir_path in leaf_dirs:
             if is_cancel_requested and is_cancel_requested():
                 raise RuntimeError('预创建远端目录时检测到取消请求')
-            folder = self._get_folder(remote_dir_path)
+            folder = self._get_folder(remote_dir_path, log=log, is_cancel_requested=is_cancel_requested)
             created[remote_dir_path] = folder.remote_dir_id
-            if log:
-                log(f"远端叶子目录已就绪: {folder.remote_dir_path} (id={folder.remote_dir_id})")
         return created
 
     def prepare_dir_context(
@@ -110,14 +168,36 @@ class UploadStrategyService:
         remote_dir_path: str,
         force_refresh_remote_cache: bool,
         log: Callable[[str], None] | None = None,
+        is_cancel_requested: Callable[[], bool] | None = None,
     ) -> RemoteDirContext:
-        folder = self._get_folder(remote_dir_path)
+        folder = self._get_folder(remote_dir_path, log=log, is_cancel_requested=is_cancel_requested)
         items = self._get_remote_dir_items(
             pid=folder.remote_dir_id,
             remote_dir_path=folder.remote_dir_path,
             force_refresh_remote_cache=force_refresh_remote_cache,
             log=log,
         )
+        return RemoteDirContext(remote_dir_id=folder.remote_dir_id, remote_dir_path=folder.remote_dir_path, items=items)
+
+    def prepare_plugin_aligned_context(
+        self,
+        *,
+        remote_dir_path: str,
+        duplicate_check_mode: DuplicateCheckMode,
+        force_refresh_remote_cache: bool,
+        log: Callable[[str], None] | None = None,
+        is_cancel_requested: Callable[[], bool] | None = None,
+    ) -> RemoteDirContext:
+        folder = self._get_folder(remote_dir_path, log=log, is_cancel_requested=is_cancel_requested)
+        should_load_items = duplicate_check_mode != DuplicateCheckMode.NONE or force_refresh_remote_cache
+        items: list[dict] = []
+        if should_load_items:
+            items = self._get_remote_dir_items(
+                pid=folder.remote_dir_id,
+                remote_dir_path=folder.remote_dir_path,
+                force_refresh_remote_cache=force_refresh_remote_cache,
+                log=log,
+            )
         return RemoteDirContext(remote_dir_id=folder.remote_dir_id, remote_dir_path=folder.remote_dir_path, items=items)
 
     def _get_remote_dir_items(
@@ -143,7 +223,7 @@ class UploadStrategyService:
         self.remote_cache_service.replace_dir_entries(remote_dir_id=pid, remote_dir_path=remote_dir_path, items=remote_items)
         self._dir_cache[pid] = remote_items
         if log:
-            action = '强制同步远端目录文件完成' if force_refresh_remote_cache else '远端目录缓存未命中，已拉取并写入本地缓存'
+            action = '强制同步远端目录文件完成' if force_refresh_remote_cache else '按需拉取远端目录文件并写入本地缓存'
             log(f'{action}: {remote_dir_path}，共 {len(remote_items)} 个文件')
         return remote_items
 
@@ -314,8 +394,39 @@ class UploadStrategyService:
             remote_dir_path=context.remote_dir_path,
         )
 
+    def verify_uploaded_file(
+        self,
+        *,
+        remote_file_path: str,
+        context: RemoteDirContext,
+        file_sha1: str | None,
+        size: int,
+        log: Callable[[str], None] | None = None,
+        is_cancel_requested: Callable[[], bool] | None = None,
+    ) -> dict | None:
+        verified = self._verifier.verify(
+            remote_file_path,
+            log=log,
+            is_cancel_requested=is_cancel_requested,
+        )
+        if verified is None:
+            return None
+        self._store_uploaded_file(
+            context=context,
+            filename=PurePosixPath(remote_file_path).name,
+            file_sha1=str(verified.get('sha1') or file_sha1 or '').upper() or (file_sha1 or ''),
+            size=int(verified.get('size') or size),
+            remote_file_id=str(verified.get('id') or '') or None,
+            remote_pickcode=verified.get('pickcode'),
+        )
+        return verified
+
     @staticmethod
     def resolve_remote_dir_path(remote_root: str, candidate: LocalFileCandidate) -> str:
         remote_root_path = PurePosixPath(remote_root)
         remote_dir = remote_root_path.joinpath(*candidate.relative_path.parts[:-1]) if candidate.relative_path.parts[:-1] else remote_root_path
         return remote_dir.as_posix()
+
+    @staticmethod
+    def resolve_remote_file_path(remote_root: str, candidate: LocalFileCandidate) -> str:
+        return PurePosixPath(remote_root).joinpath(*candidate.relative_path.parts).as_posix()

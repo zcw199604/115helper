@@ -51,47 +51,132 @@ class P115Gateway:
                 return "115 接口调用失败，错误信息已脱敏"
         return text or exc.__class__.__name__
 
+    def get_dir_id_by_path(self, remote_dir: PurePosixPath) -> int:
+        path_str = remote_dir.as_posix()
+        if path_str == "/":
+            return 0
+        for lookup in (
+            lambda: self.client.fs_dir_getid(path_str, **self.request_kwargs(app=False)),
+            lambda: self.client.fs_dir_getid_app(path_str, **self.request_kwargs()),
+        ):
+            try:
+                response = lookup()
+                directory_id = int(response.get("id", 0))
+                if directory_id > 0:
+                    return directory_id
+            except Exception:
+                continue
+        return 0
+
     def ensure_remote_dir(self, remote_dir: PurePosixPath) -> int:
         path_str = remote_dir.as_posix()
         if path_str == "/":
             return 0
-        try:
-            response = self.client.fs_dir_getid(path_str, **self.request_kwargs(app=False))
-            directory_id = int(response.get("id", 0))
-            if directory_id > 0:
-                return directory_id
-        except Exception:
-            pass
+        directory_id = self.get_dir_id_by_path(remote_dir)
+        if directory_id > 0:
+            return directory_id
         response = self.client.fs_makedirs_app(path_str, pid=0, **self.request_kwargs())
         return int(response["cid"])
 
     @staticmethod
     def _normalize_remote_item(item: dict) -> dict:
+        raw_id = item.get("fid") or item.get("cid") or item.get("file_id") or item.get("id")
+        is_dir = bool(
+            item.get("is_dir")
+            or item.get("fc")
+            or item.get("category") == "dir"
+            or (item.get("cid") not in (None, "") and item.get("fid") in (None, ""))
+        )
         return {
-            "id": item.get("fid") or item.get("file_id") or item.get("id"),
+            "id": raw_id,
             "pickcode": item.get("pc") or item.get("pick_code") or item.get("pickcode"),
             "name": item.get("n") or item.get("fn") or item.get("file_name") or item.get("name"),
             "size": item.get("s") or item.get("fs") or item.get("file_size") or item.get("size"),
             "sha1": item.get("sha") or item.get("sha1") or item.get("file_sha1") or "",
+            "is_dir": is_dir,
         }
 
-    def list_remote_dir_files(self, *, pid: int) -> list[dict]:
+    def list_remote_dir_entries(self, *, pid: int, include_dirs: bool = True) -> list[dict]:
         offset = 0
         limit = 200
         result: list[dict] = []
+        show_dir = 1 if include_dirs else 0
         while True:
             response = self.client.fs_files(
-                {"cid": pid, "limit": limit, "offset": offset, "show_dir": 0},
+                {"cid": pid, "limit": limit, "offset": offset, "show_dir": show_dir},
                 **self.request_kwargs(app=False),
             )
             items = response.get("data") or []
             if not isinstance(items, list):
                 break
-            result.extend(self._normalize_remote_item(item) for item in items)
+            normalized_items = [self._normalize_remote_item(item) for item in items]
+            if not include_dirs:
+                normalized_items = [item for item in normalized_items if not item.get("is_dir")]
+            result.extend(normalized_items)
             if len(items) < limit:
                 break
             offset += limit
         return result
+
+    def list_remote_dir_files(self, *, pid: int) -> list[dict]:
+        return self.list_remote_dir_entries(pid=pid, include_dirs=False)
+
+    def find_child_dir(self, *, parent_id: int, name: str) -> dict | None:
+        for item in self.list_remote_dir_entries(pid=parent_id, include_dirs=True):
+            if item.get("is_dir") and item.get("name") == name:
+                return item
+        return None
+
+    def create_child_dir(self, *, parent_id: int, name: str) -> dict:
+        response = self.client.fs_mkdir({"cname": name, "pid": parent_id}, **self.request_kwargs(app=False))
+        raw_id = response.get("cid") or response.get("file_id") or response.get("id")
+        if not raw_id:
+            raise RuntimeError(f"115 创建目录失败: {response}")
+        return {
+            "id": int(raw_id),
+            "pickcode": self.client.to_pickcode(int(raw_id)) if hasattr(self.client, "to_pickcode") else None,
+            "name": name,
+            "size": None,
+            "sha1": "",
+            "is_dir": True,
+        }
+
+    def ensure_remote_dir_plugin_style(self, remote_dir: PurePosixPath) -> int:
+        normalized = PurePosixPath(remote_dir).as_posix()
+        if normalized == "/":
+            return 0
+        existing_id = self.get_dir_id_by_path(PurePosixPath(normalized))
+        if existing_id > 0:
+            return existing_id
+
+        current_path = PurePosixPath("/")
+        current_id = 0
+        for part in PurePosixPath(normalized).parts[1:]:
+            current_path = current_path.joinpath(part)
+            existing_id = self.get_dir_id_by_path(current_path)
+            if existing_id > 0:
+                current_id = existing_id
+                continue
+            child_dir = self.find_child_dir(parent_id=current_id, name=part)
+            if child_dir is not None:
+                current_id = int(child_dir["id"])
+                continue
+            created = self.create_child_dir(parent_id=current_id, name=part)
+            current_id = int(created["id"])
+        return current_id
+
+    def get_remote_file_by_path(self, remote_file_path: PurePosixPath) -> dict | None:
+        normalized = PurePosixPath(remote_file_path)
+        parent_path = normalized.parent
+        parent_id = self.get_dir_id_by_path(parent_path)
+        if parent_id < 0 or (parent_id == 0 and parent_path.as_posix() != "/"):
+            return None
+        for item in self.list_remote_dir_entries(pid=parent_id, include_dirs=True):
+            if item.get("is_dir"):
+                continue
+            if item.get("name") == normalized.name:
+                return item
+        return None
 
     def fast_upload_init(self, *, filename: str, filesize: int, filesha1: str, pid: int, read_range_hash: Callable[[str], str]) -> dict:
         return self.client.upload_file_init(

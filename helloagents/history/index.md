@@ -19,6 +19,8 @@
 | 202604021120 | remote_leaf_precreate | 功能 | ✅已完成 | [链接](2026-04/202604021120_remote_leaf_precreate/) |
 | 202604021155 | align_get_folder | 功能 | ✅已完成 | [链接](2026-04/202604021155_align_get_folder/) |
 | 202604021245 | mobile_frontend | 功能 | ✅已完成 | [链接](2026-04/202604021245_mobile_frontend/) |
+| 202604030040 | align_plugin_upload_flow | 重构 | ✅已完成 | [链接](2026-04/202604030040_align_plugin_upload_flow/) |
+| 202604021330 | 115_upload_flow_compare | 文档 | ✅已完成 | [链接](2026-04/202604021330_115_upload_flow_compare/) |
 
 ---
 
@@ -38,3 +40,5 @@
 - [202604021120_remote_leaf_precreate](2026-04/202604021120_remote_leaf_precreate/) - 对齐 plugin 的远端叶子目录预创建策略
 - [202604021155_align_get_folder](2026-04/202604021155_align_get_folder/) - 对齐 plugin `_get_folder` 目录对象语义
 - [202604021245_mobile_frontend](2026-04/202604021245_mobile_frontend/) - 增强前端移动端响应式兼容
+- [202604030040_align_plugin_upload_flow](2026-04/202604030040_align_plugin_upload_flow/) - 将 115 上传主流程调整为插件对齐方式，并保留批处理缓存兼容模式
+- [202604021330_115_upload_flow_compare](2026-04/202604021330_115_upload_flow_compare/) - 对比 115helper 与 MoviePilot-Plugins 的 115 上传目录创建与同步流程

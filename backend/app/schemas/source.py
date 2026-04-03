@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.enums import DuplicateCheckMode, RunStatus, UploadMode
+from app.models.enums import DuplicateCheckMode, RunStatus, UploadFlowMode, UploadMode
 
 
 class SourceBase(BaseModel):
@@ -14,6 +14,7 @@ class SourceBase(BaseModel):
     local_path: str = Field(min_length=1)
     remote_path: str = Field(min_length=1)
     upload_mode: UploadMode
+    upload_flow_mode: UploadFlowMode = UploadFlowMode.PLUGIN_ALIGNED
     suffix_rules: list[str] = Field(default_factory=list)
     exclude_rules: list[str] = Field(default_factory=list)
     cron_expr: str | None = None
@@ -71,6 +72,7 @@ class SourceUpdate(BaseModel):
     local_path: str | None = None
     remote_path: str | None = None
     upload_mode: UploadMode | None = None
+    upload_flow_mode: UploadFlowMode | None = None
     suffix_rules: list[str] | None = None
     exclude_rules: list[str] | None = None
     cron_expr: str | None = None

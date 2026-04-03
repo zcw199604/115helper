@@ -18,6 +18,7 @@
 | local_path | text | 非空 | 本地源目录 |
 | remote_path | text | 非空 | 115 目标路径 |
 | upload_mode | text | 非空 | 上传模式 |
+| upload_flow_mode | text | 非空 | 执行方式：plugin_aligned / batch_cached |
 | suffix_rules_json | text | 非空 | 后缀白名单 JSON |
 | exclude_rules_json | text | 非空 | 排除规则 JSON |
 | cron_expr | text | 可空 | 定时表达式 |
@@ -103,3 +104,4 @@
 ## 近期补充
 - 新增 `remote_dir_caches` / `remote_dir_entries` 用于持久化 115 远端目录文件缓存。
 - `sync_sources` 新增 `force_refresh_remote_cache` 字段。
+- `sync_sources` 新增 `upload_flow_mode` 字段，用于切换插件对齐执行方式与旧版批处理缓存方式。

@@ -1,6 +1,6 @@
 """同步源 Schema 测试。"""
 
-from app.models.enums import DuplicateCheckMode, UploadMode
+from app.models.enums import DuplicateCheckMode, UploadFlowMode, UploadMode
 from app.schemas.source import SourceCreate
 
 
@@ -19,6 +19,7 @@ def test_source_create_normalization() -> None:
     assert payload.remote_path == '/sync/root'
     assert payload.suffix_rules == ['.mkv', '.mp4']
     assert payload.force_refresh_remote_cache is True
+    assert payload.upload_flow_mode == UploadFlowMode.PLUGIN_ALIGNED
 
 
 def test_source_create_duplicate_mode() -> None:
@@ -27,9 +28,11 @@ def test_source_create_duplicate_mode() -> None:
         local_path='/tmp',
         remote_path='/sync',
         upload_mode=UploadMode.FAST_ONLY,
+        upload_flow_mode=UploadFlowMode.BATCH_CACHED,
         suffix_rules=[],
         exclude_rules=[],
         enabled=True,
         duplicate_check_mode=DuplicateCheckMode.NAME,
     )
     assert payload.duplicate_check_mode == DuplicateCheckMode.NAME
+    assert payload.upload_flow_mode == UploadFlowMode.BATCH_CACHED

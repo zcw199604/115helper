@@ -15,3 +15,4 @@ def test_ensure_schema_compat_adds_duplicate_columns(tmp_path) -> None:
     assert 'skip_existing_remote' in columns
     assert 'duplicate_check_mode' in columns
     assert 'force_refresh_remote_cache' in columns
+    assert 'upload_flow_mode' in columns

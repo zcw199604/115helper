@@ -11,6 +11,13 @@ class UploadMode(str, Enum):
     MULTIPART_ONLY = "multipart_only"
 
 
+class UploadFlowMode(str, Enum):
+    """同步流程模式。"""
+
+    PLUGIN_ALIGNED = "plugin_aligned"
+    BATCH_CACHED = "batch_cached"
+
+
 class DuplicateCheckMode(str, Enum):
     """远端防重复匹配模式。"""
 

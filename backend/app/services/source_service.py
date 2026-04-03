@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models.enums import DuplicateCheckMode
+from app.models.enums import DuplicateCheckMode, UploadFlowMode
 from app.repositories.source_repository import SourceRepository
 from app.schemas.source import ScheduleState, SourceCreate, SourceRead, SourceUpdate
 from app.services.scheduler_service import scheduler_service
@@ -28,6 +28,13 @@ class SourceService:
             return DuplicateCheckMode.SHA1
         return DuplicateCheckMode.NONE
 
+    @staticmethod
+    def _resolve_upload_flow_mode(source) -> UploadFlowMode:
+        raw_value = getattr(source, 'upload_flow_mode', None)
+        if raw_value:
+            return UploadFlowMode(raw_value)
+        return UploadFlowMode.PLUGIN_ALIGNED
+
     def _to_read_model(self, source) -> SourceRead:
         snapshot = scheduler_service.get_snapshot(self.db, source.id)
         return SourceRead(
@@ -36,6 +43,7 @@ class SourceService:
             local_path=source.local_path,
             remote_path=source.remote_path,
             upload_mode=source.upload_mode,
+            upload_flow_mode=self._resolve_upload_flow_mode(source),
             suffix_rules=json.loads(source.suffix_rules_json or '[]'),
             exclude_rules=json.loads(source.exclude_rules_json or '[]'),
             cron_expr=source.cron_expr,

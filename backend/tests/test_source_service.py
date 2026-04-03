@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from app.models.enums import DuplicateCheckMode, RunStatus
+from app.models.enums import DuplicateCheckMode, RunStatus, UploadFlowMode
 from app.schemas.source import ScheduleState
 from app.services.source_service import SourceService
 
@@ -28,6 +28,7 @@ def test_to_read_model_contains_schedule_state(monkeypatch) -> None:
         remote_path='/remote/a',
         upload_mode='fast_only',
         suffix_rules_json='[".mkv"]',
+        upload_flow_mode='plugin_aligned',
         exclude_rules_json='[]',
         cron_expr='0 * * * *',
         enabled=1,
@@ -44,3 +45,4 @@ def test_to_read_model_contains_schedule_state(monkeypatch) -> None:
     assert result.schedule_state.last_run_status == RunStatus.SUCCESS
     assert result.duplicate_check_mode == DuplicateCheckMode.NAME
     assert result.force_refresh_remote_cache is True
+    assert result.upload_flow_mode == UploadFlowMode.PLUGIN_ALIGNED

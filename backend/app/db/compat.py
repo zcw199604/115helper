@@ -19,3 +19,5 @@ def ensure_schema_compat(engine: Engine) -> None:
                 conn.execute(text("UPDATE sync_sources SET duplicate_check_mode = CASE WHEN skip_existing_remote = 1 THEN 'sha1' ELSE 'none' END"))
             if 'force_refresh_remote_cache' not in columns:
                 conn.execute(text('ALTER TABLE sync_sources ADD COLUMN force_refresh_remote_cache INTEGER NOT NULL DEFAULT 0'))
+            if 'upload_flow_mode' not in columns:
+                conn.execute(text("ALTER TABLE sync_sources ADD COLUMN upload_flow_mode VARCHAR(24) NOT NULL DEFAULT 'plugin_aligned'"))

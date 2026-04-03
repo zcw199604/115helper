@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.integrations.p115.client import P115Gateway
-from app.models.enums import DuplicateCheckMode, FileAction, RunStatus, TriggerType, UploadMode
+from app.models.enums import DuplicateCheckMode, FileAction, RunStatus, TriggerType, UploadFlowMode, UploadMode
 from app.models.file_record import FileRecord
 from app.models.run import JobRun
 from app.models.source import SyncSource
@@ -74,6 +74,181 @@ class RunService:
         scheduler_service.release_source(source.id)
         return True
 
+    @staticmethod
+    def _resolve_upload_flow_mode(source: SyncSource) -> UploadFlowMode:
+        raw_value = getattr(source, 'upload_flow_mode', None) or UploadFlowMode.PLUGIN_ALIGNED.value
+        return UploadFlowMode(raw_value)
+
+    def _execute_batch_cached_flow(
+        self,
+        *,
+        run: JobRun,
+        source: SyncSource,
+        uploader: UploadStrategyService,
+        gateway: P115Gateway,
+        candidates: list,
+        duplicate_check_mode: DuplicateCheckMode,
+        force_refresh_remote_cache: bool,
+        summary: dict,
+    ) -> None:
+        grouped_candidates: dict[str, list] = {}
+        for candidate in candidates:
+            remote_dir_path = uploader.resolve_remote_dir_path(source.remote_path, candidate)
+            grouped_candidates.setdefault(remote_dir_path, []).append(candidate)
+
+        if grouped_candidates:
+            uploader.precreate_remote_dirs(
+                list(grouped_candidates.keys()),
+                log=lambda message: self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-dir-prepare', message=message),
+                is_cancel_requested=lambda: self._cancel_requested(run.id),
+            )
+            if self._stop_if_cancelled(run, source, 'remote-dir-prepare', summary):
+                return
+
+        for remote_dir_path, dir_candidates in grouped_candidates.items():
+            if self._stop_if_cancelled(run, source, 'dir', summary):
+                return
+            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-dir', message=f'开始处理远端目录批次: {remote_dir_path}，文件数 {len(dir_candidates)}')
+            context = uploader.prepare_dir_context(
+                remote_dir_path=remote_dir_path,
+                force_refresh_remote_cache=force_refresh_remote_cache,
+                log=lambda message: self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-cache', message=message),
+                is_cancel_requested=lambda: self._cancel_requested(run.id),
+            )
+            for candidate in dir_candidates:
+                if self._stop_if_cancelled(run, source, 'file', summary):
+                    return
+                self._process_candidate(
+                    run=run,
+                    source=source,
+                    uploader=uploader,
+                    gateway=gateway,
+                    candidate=candidate,
+                    context=context,
+                    remote_file_path=uploader.resolve_remote_file_path(source.remote_path, candidate),
+                    duplicate_check_mode=duplicate_check_mode,
+                    summary=summary,
+                )
+
+    def _execute_plugin_aligned_flow(
+        self,
+        *,
+        run: JobRun,
+        source: SyncSource,
+        uploader: UploadStrategyService,
+        gateway: P115Gateway,
+        candidates: list,
+        duplicate_check_mode: DuplicateCheckMode,
+        force_refresh_remote_cache: bool,
+        summary: dict,
+    ) -> None:
+        for candidate in candidates:
+            if self._stop_if_cancelled(run, source, 'file', summary):
+                return
+            remote_dir_path = uploader.resolve_remote_dir_path(source.remote_path, candidate)
+            remote_file_path = uploader.resolve_remote_file_path(source.remote_path, candidate)
+            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='file', message=f'开始按插件方式处理文件: {candidate.relative_path.as_posix()} ({candidate.size} bytes)')
+            context = uploader.prepare_plugin_aligned_context(
+                remote_dir_path=remote_dir_path,
+                duplicate_check_mode=duplicate_check_mode,
+                force_refresh_remote_cache=force_refresh_remote_cache,
+                log=lambda message, candidate=candidate: self.log_service.log(
+                    run_id=run.id,
+                    source_id=source.id,
+                    level='INFO',
+                    stage='remote-dir-prepare',
+                    message=f"{candidate.relative_path.as_posix()} -> {message}",
+                ),
+                is_cancel_requested=lambda: self._cancel_requested(run.id),
+            )
+            self._process_candidate(
+                run=run,
+                source=source,
+                uploader=uploader,
+                gateway=gateway,
+                candidate=candidate,
+                context=context,
+                remote_file_path=remote_file_path,
+                duplicate_check_mode=duplicate_check_mode,
+                summary=summary,
+            )
+
+    def _process_candidate(
+        self,
+        *,
+        run: JobRun,
+        source: SyncSource,
+        uploader: UploadStrategyService,
+        gateway: P115Gateway,
+        candidate,
+        context,
+        remote_file_path: str,
+        duplicate_check_mode: DuplicateCheckMode,
+        summary: dict,
+    ) -> None:
+        try:
+            result = uploader.upload_candidate_in_context(
+                candidate,
+                context,
+                UploadMode(source.upload_mode),
+                duplicate_check_mode=duplicate_check_mode,
+                log=lambda message, candidate=candidate: self.log_service.log(
+                    run_id=run.id,
+                    source_id=source.id,
+                    level='INFO',
+                    stage='open-upload',
+                    message=f"{candidate.relative_path.as_posix()} -> {message}",
+                ),
+                is_cancel_requested=lambda: self._cancel_requested(run.id),
+            )
+            if result.action in {FileAction.FAST_UPLOADED, FileAction.MULTIPART_UPLOADED}:
+                verified = uploader.verify_uploaded_file(
+                    remote_file_path=remote_file_path,
+                    context=context,
+                    file_sha1=result.file_sha1,
+                    size=candidate.size,
+                    log=lambda message, candidate=candidate: self.log_service.log(
+                        run_id=run.id,
+                        source_id=source.id,
+                        level='INFO',
+                        stage='remote-verify',
+                        message=f"{candidate.relative_path.as_posix()} -> {message}",
+                    ),
+                    is_cancel_requested=lambda: self._cancel_requested(run.id),
+                )
+                if verified is not None:
+                    result.remote_file_id = str(verified.get('id') or '') or result.remote_file_id
+                    result.remote_pickcode = verified.get('pickcode') or result.remote_pickcode
+                    result.message = f'{result.message}；上传后轮询确认成功'
+                else:
+                    result.message = f'{result.message}；上传后轮询未确认'
+
+            if result.action == FileAction.FAST_UPLOADED:
+                summary['fast_uploaded'] += 1
+            elif result.action == FileAction.MULTIPART_UPLOADED:
+                summary['multipart_uploaded'] += 1
+            elif result.action == FileAction.SKIPPED:
+                summary['skipped'] += 1
+            action = result.action.value
+            message = result.message
+            file_sha1 = result.file_sha1
+            remote_file_id = result.remote_file_id
+            remote_pickcode = result.remote_pickcode
+            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='upload', message=f'文件处理完成: {candidate.relative_path.as_posix()} -> {message}')
+        except Exception as exc:
+            summary['failed'] += 1
+            action = FileAction.FAILED.value
+            message = gateway.humanize_error(exc)
+            file_sha1 = None
+            remote_file_id = None
+            remote_pickcode = None
+            self.log_service.log(run_id=run.id, source_id=source.id, level='ERROR', stage='upload', message=f'文件处理失败: {candidate.relative_path.as_posix()} -> {message}')
+
+        self.db.add(FileRecord(run_id=run.id, source_id=source.id, relative_path=candidate.relative_path.as_posix(), file_size=candidate.size, file_sha1=file_sha1, suffix=candidate.suffix, action=action, remote_file_id=remote_file_id, remote_pickcode=remote_pickcode, message=message))
+        self.db.commit()
+        if self._stop_if_cancelled(run, source, 'upload', summary):
+            return
+
     def execute_run(self, run_id: int) -> JobRun:
         run = self.ensure_run_exists(run_id)
         source = self._get_source_or_404(run.source_id)
@@ -105,79 +280,36 @@ class RunService:
             duplicate_check_mode = DuplicateCheckMode(getattr(source, 'duplicate_check_mode', None) or ('sha1' if bool(getattr(source, 'skip_existing_remote', 0)) else 'none'))
             mode_text = {'none': '关闭', 'name': '按文件名', 'sha1': '按 SHA1'}[duplicate_check_mode.value]
             force_refresh_remote_cache = bool(getattr(source, 'force_refresh_remote_cache', 0))
-            refresh_text = '强制同步远端目录文件' if force_refresh_remote_cache else '优先使用本地远端目录缓存'
-            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='scan', message=f"扫描完成，候选文件 {len(candidates)} 个；后缀规则 {suffix_rules or ['全部']}；排除规则 {exclude_rules or ['无']}；远端防重 {mode_text}；目录缓存策略 {refresh_text}")
+            refresh_text = '强制同步远端目录文件' if force_refresh_remote_cache else '按需使用本地远端目录缓存'
+            upload_flow_mode = self._resolve_upload_flow_mode(source)
+            flow_text = '插件对齐' if upload_flow_mode == UploadFlowMode.PLUGIN_ALIGNED else '批处理缓存'
+            self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='scan', message=f"扫描完成，候选文件 {len(candidates)} 个；后缀规则 {suffix_rules or ['全部']}；排除规则 {exclude_rules or ['无']}；远端防重 {mode_text}；目录缓存策略 {refresh_text}；执行方式 {flow_text}")
             if self._stop_if_cancelled(run, source, 'scan', summary):
                 return run
 
             uploader = UploadStrategyService(gateway, self.remote_cache_service)
-            grouped_candidates: dict[str, list] = {}
-            for candidate in candidates:
-                remote_dir_path = uploader.resolve_remote_dir_path(source.remote_path, candidate)
-                grouped_candidates.setdefault(remote_dir_path, []).append(candidate)
-
-            if grouped_candidates:
-                uploader.precreate_remote_dirs(
-                    list(grouped_candidates.keys()),
-                    log=lambda message: self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-dir-prepare', message=message),
-                    is_cancel_requested=lambda: self._cancel_requested(run.id),
-                )
-                if self._stop_if_cancelled(run, source, 'remote-dir-prepare', summary):
-                    return run
-
-            for remote_dir_path, dir_candidates in grouped_candidates.items():
-                if self._stop_if_cancelled(run, source, 'dir', summary):
-                    return run
-                self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-dir', message=f'开始处理远端目录批次: {remote_dir_path}，文件数 {len(dir_candidates)}')
-                context = uploader.prepare_dir_context(
-                    remote_dir_path=remote_dir_path,
+            if upload_flow_mode == UploadFlowMode.BATCH_CACHED:
+                self._execute_batch_cached_flow(
+                    run=run,
+                    source=source,
+                    uploader=uploader,
+                    gateway=gateway,
+                    candidates=candidates,
+                    duplicate_check_mode=duplicate_check_mode,
                     force_refresh_remote_cache=force_refresh_remote_cache,
-                    log=lambda message: self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='remote-cache', message=message),
+                    summary=summary,
                 )
-                for candidate in dir_candidates:
-                    if self._stop_if_cancelled(run, source, 'file', summary):
-                        return run
-                    self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='file', message=f'开始处理文件: {candidate.relative_path.as_posix()} ({candidate.size} bytes)')
-                    try:
-                        result = uploader.upload_candidate_in_context(
-                            candidate,
-                            context,
-                            UploadMode(source.upload_mode),
-                            duplicate_check_mode=duplicate_check_mode,
-                            log=lambda message, candidate=candidate: self.log_service.log(
-                                run_id=run.id,
-                                source_id=source.id,
-                                level='INFO',
-                                stage='open-upload',
-                                message=f"{candidate.relative_path.as_posix()} -> {message}",
-                            ),
-                            is_cancel_requested=lambda: self._cancel_requested(run.id),
-                        )
-                        if result.action == FileAction.FAST_UPLOADED:
-                            summary['fast_uploaded'] += 1
-                        elif result.action == FileAction.MULTIPART_UPLOADED:
-                            summary['multipart_uploaded'] += 1
-                        elif result.action == FileAction.SKIPPED:
-                            summary['skipped'] += 1
-                        action = result.action.value
-                        message = result.message
-                        file_sha1 = result.file_sha1
-                        remote_file_id = result.remote_file_id
-                        remote_pickcode = result.remote_pickcode
-                        self.log_service.log(run_id=run.id, source_id=source.id, level='INFO', stage='upload', message=f'文件处理完成: {candidate.relative_path.as_posix()} -> {message}')
-                    except Exception as exc:
-                        summary['failed'] += 1
-                        action = FileAction.FAILED.value
-                        message = gateway.humanize_error(exc)
-                        file_sha1 = None
-                        remote_file_id = None
-                        remote_pickcode = None
-                        self.log_service.log(run_id=run.id, source_id=source.id, level='ERROR', stage='upload', message=f'文件处理失败: {candidate.relative_path.as_posix()} -> {message}')
-
-                    self.db.add(FileRecord(run_id=run.id, source_id=source.id, relative_path=candidate.relative_path.as_posix(), file_size=candidate.size, file_sha1=file_sha1, suffix=candidate.suffix, action=action, remote_file_id=remote_file_id, remote_pickcode=remote_pickcode, message=message))
-                    self.db.commit()
-                    if self._stop_if_cancelled(run, source, 'upload', summary):
-                        return run
+            else:
+                self._execute_plugin_aligned_flow(
+                    run=run,
+                    source=source,
+                    uploader=uploader,
+                    gateway=gateway,
+                    candidates=candidates,
+                    duplicate_check_mode=duplicate_check_mode,
+                    force_refresh_remote_cache=force_refresh_remote_cache,
+                    summary=summary,
+                )
 
             run.summary_json = json.dumps(summary, ensure_ascii=False)
             run.finished_at = datetime.now(timezone.utc)

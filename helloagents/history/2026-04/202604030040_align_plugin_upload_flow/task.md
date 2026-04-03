@@ -1,0 +1,7 @@
+- [√] 梳理并重构主同步流程，移除默认“预创建叶子目录 + 目录级前置同步”路径（`backend/app/services/run_service.py`, `backend/app/services/upload_strategy.py`）
+- [√] 新增插件式目录准备能力：逐级列目录、逐级创建缺失目录，并补齐网关 API 封装（`backend/app/integrations/p115/client.py`, `backend/app/services/upload_strategy.py`）
+- [√] 新增上传后单文件轮询确认能力，并调整结果落库与日志语义（`backend/app/services/upload_strategy.py`, `backend/app/services/run_service.py`）
+- [√] 重新梳理远端缓存策略，使其从默认前置依赖降级为可选优化（`backend/app/services/remote_dir_cache_service.py`, 相关调用方）
+- [√] 如采用双模式灰度，补充执行模式配置、数据模型与前端表单项（`backend/app/models/source.py`, `backend/app/schemas/source.py`, `backend/app/repositories/source_repository.py`, `frontend/src/views/sources/SourceFormView.vue`）
+- [√] 补充单元/集成测试，覆盖目录缺失、逐级创建、上传确认、取消中断等关键场景（`backend/tests/...`）
+- [√] 更新知识库文档与变更记录，记录新旧流程差异、配置说明与回退方案（`helloagents/wiki/modules/p115-gateway.md`, `helloagents/wiki/modules/sync-engine.md`, `helloagents/CHANGELOG.md`）

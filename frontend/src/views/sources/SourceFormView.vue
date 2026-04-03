@@ -1,10 +1,10 @@
 <template>
-  <div>
+  <div class="source-form page-shell">
     <PageHeader :title="pageTitle" description="配置同步目录、上传模式、后缀白名单与定时任务。" />
 
-    <el-card>
-      <el-form ref="formRef" :model="form" :label-width="isMobile ? 'auto' : '140px'" :label-position="isMobile ? 'top' : 'right'" class="source-form">
-        <el-form-item label="配置名称">
+    <el-card shadow="never" :body-style="{ padding: isMobile ? '18px 16px' : '24px' }">
+      <el-form label-position="top" :model="form">
+        <el-form-item label="任务名称">
           <el-input v-model="form.name" placeholder="例如：电影目录" />
         </el-form-item>
         <el-form-item label="本地目录">
@@ -19,6 +19,13 @@
             <el-option label="秒传优先，失败后分片" value="fast_then_multipart" />
             <el-option label="仅分片上传" value="multipart_only" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="执行方式">
+          <el-select v-model="form.upload_flow_mode" style="width: 100%">
+            <el-option label="插件对齐" value="plugin_aligned" />
+            <el-option label="批处理缓存兼容模式" value="batch_cached" />
+          </el-select>
+          <div class="form-tip">插件对齐模式会按文件逐个准备目录并在上传后轮询确认；批处理缓存模式保留旧版“预创建目录 + 目录缓存预热”行为。</div>
         </el-form-item>
         <el-form-item label="后缀白名单">
           <el-select
@@ -57,12 +64,12 @@
             <el-option label="按文件名跳过" value="name" />
             <el-option label="按 SHA1 跳过" value="sha1" />
           </el-select>
-          <div class="form-tip">开启后会优先读取本地 SQLite 中的远端目录缓存，再按所选模式判断是否跳过。</div>
+          <div class="form-tip">开启后会按需读取目标目录文件列表，再按所选模式判断是否跳过。</div>
         </el-form-item>
         <el-form-item label="强制同步远端目录文件" class="switch-item">
           <div class="switch-field">
             <el-switch v-model="form.force_refresh_remote_cache" />
-            <div class="form-tip">开启后，每次执行任务都会强制调用 115 接口刷新目标目录缓存；关闭时优先复用本地 SQLite 缓存。</div>
+            <div class="form-tip">开启后，每次执行任务都会强制调用 115 接口刷新当前目标目录文件列表；关闭时优先复用本地 SQLite 缓存。</div>
           </div>
         </el-form-item>
         <el-form-item label="启用任务" class="switch-item">
@@ -104,6 +111,7 @@ const form = reactive<SourceFormInput>({
   local_path: '',
   remote_path: '',
   upload_mode: 'fast_then_multipart',
+  upload_flow_mode: 'plugin_aligned',
   suffix_rules: ['.mp4', '.mkv'],
   exclude_rules: [],
   cron_expr: '',
@@ -126,6 +134,7 @@ async function loadSource() {
   form.local_path = source.local_path
   form.remote_path = source.remote_path
   form.upload_mode = source.upload_mode
+  form.upload_flow_mode = source.upload_flow_mode
   form.suffix_rules = source.suffix_rules
   form.exclude_rules = source.exclude_rules
   form.cron_expr = source.cron_expr ?? ''

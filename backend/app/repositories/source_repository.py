@@ -27,6 +27,7 @@ class SourceRepository:
             local_path=payload.local_path,
             remote_path=payload.remote_path,
             upload_mode=payload.upload_mode.value,
+            upload_flow_mode=payload.upload_flow_mode.value,
             suffix_rules_json=json.dumps(payload.suffix_rules, ensure_ascii=False),
             exclude_rules_json=json.dumps(payload.exclude_rules, ensure_ascii=False),
             cron_expr=payload.cron_expr,
@@ -43,7 +44,7 @@ class SourceRepository:
     def update(self, source: SyncSource, payload: SourceUpdate) -> SyncSource:
         data = payload.model_dump(exclude_unset=True)
         for key, value in data.items():
-            if key == "upload_mode" and value is not None:
+            if key in {"upload_mode", "upload_flow_mode"} and value is not None:
                 setattr(source, key, value.value)
             elif key == "suffix_rules" and value is not None:
                 source.suffix_rules_json = json.dumps(value, ensure_ascii=False)

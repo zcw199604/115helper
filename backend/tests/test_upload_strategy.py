@@ -1,6 +1,6 @@
 """上传策略测试。"""
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from app.models.enums import DuplicateCheckMode, FileAction, UploadMode
 from app.services.sync_scanner import LocalFileCandidate, calc_sha1
@@ -14,14 +14,28 @@ class FakeGateway:
         self.multipart_called = False
         self.list_count = 0
         self.ensure_count = 0
+        self.plugin_ensure_calls: list[str] = []
+        self.known_dirs = {'/remote': 100}
+        self.files_by_path: dict[str, dict] = {}
 
-    def ensure_remote_dir(self, _remote_dir):
+    def get_dir_id_by_path(self, remote_dir: PurePosixPath):
+        return self.known_dirs.get(remote_dir.as_posix(), 0)
+
+    def ensure_remote_dir(self, remote_dir):
         self.ensure_count += 1
+        path = remote_dir.as_posix()
+        self.known_dirs[path] = 100
         return 100
 
+    def ensure_remote_dir_plugin_style(self, remote_dir: PurePosixPath):
+        path = remote_dir.as_posix()
+        self.plugin_ensure_calls.append(path)
+        self.known_dirs[path] = len(self.known_dirs) + 100
+        return self.known_dirs[path]
+
     def list_remote_dir_files(self, *, pid: int):
-        assert pid == 100
         self.list_count += 1
+        assert pid in self.known_dirs.values()
         return list(self.items)
 
     def fast_upload_init(self, **_kwargs):
@@ -31,6 +45,9 @@ class FakeGateway:
     def multipart_upload(self, **_kwargs):
         self.multipart_called = True
         return {'data': {'file_id': '300', 'pickcode': 'pc300'}}
+
+    def get_remote_file_by_path(self, remote_file_path: PurePosixPath):
+        return self.files_by_path.get(remote_file_path.as_posix())
 
 
 class FakeRemoteCacheService:
@@ -107,7 +124,6 @@ def test_prepare_context_caches_remote_dir_listing(tmp_path: Path) -> None:
     assert first.remote_dir_id == 100
     assert second.remote_dir_id == 100
     assert gateway.list_count == 1
-    assert gateway.ensure_count == 1
 
 
 def test_force_refresh_remote_cache_ignores_local_cache(tmp_path: Path) -> None:
@@ -134,3 +150,44 @@ def test_name_mode_skip_does_not_calculate_sha1(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setattr('app.services.upload_strategy.calc_sha1', fail_calc)
     result = service.upload_candidate_in_context(candidate, context, UploadMode.FAST_THEN_MULTIPART, duplicate_check_mode=DuplicateCheckMode.NAME)
     assert result.action == FileAction.SKIPPED
+
+
+def test_prepare_plugin_aligned_context_creates_missing_dir_without_listing(tmp_path: Path) -> None:
+    gateway = FakeGateway(items=[])
+    cache = FakeRemoteCacheService(exists=False)
+    service = UploadStrategyService(gateway, cache)
+
+    context = service.prepare_plugin_aligned_context(
+        remote_dir_path='/remote/new/sub',
+        duplicate_check_mode=DuplicateCheckMode.NONE,
+        force_refresh_remote_cache=False,
+    )
+
+    assert context.remote_dir_path == '/remote/new/sub'
+    assert context.items == []
+    assert gateway.plugin_ensure_calls == ['/remote/new/sub']
+    assert gateway.list_count == 0
+
+
+def test_verify_uploaded_file_updates_cache(tmp_path: Path) -> None:
+    candidate = make_candidate(tmp_path)
+    gateway = FakeGateway(items=[])
+    gateway.files_by_path['/remote/demo.mkv'] = {'id': '901', 'pickcode': 'pc901', 'name': 'demo.mkv', 'sha1': calc_sha1(candidate.absolute_path), 'size': candidate.size}
+    cache = FakeRemoteCacheService(exists=False)
+    service = UploadStrategyService(gateway, cache)
+    context = service.prepare_plugin_aligned_context(
+        remote_dir_path='/remote',
+        duplicate_check_mode=DuplicateCheckMode.NONE,
+        force_refresh_remote_cache=False,
+    )
+
+    verified = service.verify_uploaded_file(
+        remote_file_path='/remote/demo.mkv',
+        context=context,
+        file_sha1=calc_sha1(candidate.absolute_path),
+        size=candidate.size,
+    )
+
+    assert verified is not None
+    assert verified['id'] == '901'
+    assert cache.upserts[-1]['remote_file_id'] == '901'

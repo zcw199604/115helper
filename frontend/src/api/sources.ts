@@ -7,6 +7,7 @@ function normalizePayload(input: SourceFormInput) {
     local_path: input.local_path,
     remote_path: input.remote_path,
     upload_mode: input.upload_mode,
+    upload_flow_mode: input.upload_flow_mode,
     suffix_rules: input.suffix_rules,
     exclude_rules: input.exclude_rules,
     cron_expr: input.cron_expr.trim(),
